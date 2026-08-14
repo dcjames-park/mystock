@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 export function GoogleLoginButton() {
   const [error, setError] = useState<string | null>(null);
@@ -28,15 +30,20 @@ export function GoogleLoginButton() {
 
   return (
     <div className="space-y-3">
-      <button
+      <Button
         type="button"
+        className="w-full"
+        size="lg"
         onClick={handleLogin}
         disabled={pending}
-        className="w-full rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
       >
-        {pending ? "이동 중..." : "Google로 로그인"}
-      </button>
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        {pending ? "이동 중..." : "Google로 계속"}
+      </Button>
+      {error ? (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   );
 }

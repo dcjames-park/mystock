@@ -1,11 +1,13 @@
 export type Market = "kr" | "us";
 export type HoldingKind = "stock" | "etf";
 export type Currency = "KRW" | "USD";
+export type AccountColor = "blue" | "cyan" | "purple";
+export type Period = "1m" | "6m" | "1y" | "2y";
 
 export type Account = {
   id: string;
   label: string;
-  color: string;
+  color: AccountColor;
   createdAt: string;
 };
 
@@ -19,6 +21,7 @@ export type Holding = {
   buyPrice: number;
   qty: number;
   currency: Currency;
+  boughtAt: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -32,10 +35,26 @@ export type ValuationSnapshot = {
   costValue: number;
 };
 
-export type LocalPost = {
-  id: string;
-  title: string;
-  content: string;
-  author_name: string;
-  created_at: string;
+export type Quote = {
+  ticker: string;
+  lastPrice: number;
+};
+
+export type SearchHit = {
+  name: string;
+  ticker: string;
+  market: Market;
+  kind: HoldingKind;
+};
+
+export type PeriodPoint = {
+  label: string;
+  date: string;
+  value: number;
+  buy: number;
+};
+
+export type PricePoint = {
+  date: string;
+  close: number;
 };

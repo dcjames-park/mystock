@@ -1,6 +1,6 @@
-# mystock
+# Folio
 
-간단한 게시판입니다. Next.js + Supabase Auth(Google) + Vercel 기준으로 구성되어 있습니다.
+개인 주식·ETF 포트폴리오입니다. Next.js + Supabase Auth(Google) + Vercel 기준으로 구성되어 있습니다.
 
 데이터 저장소는 환경에 따라 갈립니다.
 
@@ -23,7 +23,7 @@ pnpm install
 pnpm dev
 ```
 
-브라우저에서 `http://localhost:3000`을 엽니다. 로컬에서는 로그인 없이 바로 들어가며, 글은 이 브라우저의 저장소에만 남습니다.
+브라우저에서 `http://localhost:3000`을 엽니다. 로컬에서는 로그인 없이 바로 들어가며, 샘플 계좌·종목이 브라우저 저장소에 만들어집니다. 시세 검색은 야후 파이낸스 비공식 API를 서버에서 중계합니다.
 
 운영 연동을 로컬에서 시험할 때만 아래 환경변수와 Google/Supabase 설정이 필요합니다.
 

@@ -7,11 +7,15 @@ export {
 export type { DataBackend } from "./backend";
 export type {
   Account,
+  AccountColor,
   Currency,
   Holding,
   HoldingKind,
-  LocalPost,
   Market,
+  Period,
+  PeriodPoint,
+  Quote,
+  SearchHit,
   ValuationSnapshot,
 } from "./types";
 export * as localStore from "./local-store";

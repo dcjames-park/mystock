@@ -1,16 +1,12 @@
-import { LOCAL_USER } from "@/lib/data/backend";
-import type {
-  Account,
-  Holding,
-  LocalPost,
-  ValuationSnapshot,
-} from "@/lib/data/types";
+import { buildSeedSnapshots, SEED_ACCOUNTS, SEED_HOLDINGS, SEED_QUOTES } from "@/lib/data/seed";
+import type { Account, Holding, ValuationSnapshot } from "@/lib/data/types";
 
 const KEYS = {
   accounts: "mystock.accounts",
   holdings: "mystock.holdings",
   snapshots: "mystock.snapshots",
-  posts: "mystock.posts",
+  quotes: "mystock.quotes",
+  seeded: "mystock.seeded",
 } as const;
 
 export const STORAGE_KEYS = KEYS;
@@ -51,6 +47,20 @@ function writeJson<T>(key: string, value: T) {
   notifyStoreChanged();
 }
 
+export function ensureSeeded() {
+  if (!canUseStorage()) {
+    return;
+  }
+  if (window.localStorage.getItem(KEYS.seeded) === "1") {
+    return;
+  }
+  writeJson(KEYS.accounts, SEED_ACCOUNTS);
+  writeJson(KEYS.holdings, SEED_HOLDINGS);
+  writeJson(KEYS.snapshots, buildSeedSnapshots());
+  writeJson(KEYS.quotes, SEED_QUOTES);
+  window.localStorage.setItem(KEYS.seeded, "1");
+}
+
 export function listAccounts(): Account[] {
   return readJson<Account[]>(KEYS.accounts, []);
 }
@@ -73,6 +83,14 @@ export function listSnapshots(): ValuationSnapshot[] {
 
 export function saveSnapshots(snapshots: ValuationSnapshot[]) {
   writeJson(KEYS.snapshots, snapshots);
+}
+
+export function listQuoteCache(): Record<string, number> {
+  return readJson<Record<string, number>>(KEYS.quotes, {});
+}
+
+export function saveQuoteCache(quotes: Record<string, number>) {
+  writeJson(KEYS.quotes, quotes);
 }
 
 export function upsertAccount(account: Account) {
@@ -114,33 +132,19 @@ export function deleteHolding(holdingId: string) {
   );
 }
 
-export function appendSnapshot(snapshot: ValuationSnapshot) {
-  saveSnapshots([...listSnapshots(), snapshot]);
-}
-
-export function listPosts(): LocalPost[] {
-  return readJson<LocalPost[]>(KEYS.posts, []);
-}
-
-export function savePosts(posts: LocalPost[]) {
-  writeJson(KEYS.posts, posts);
-}
-
-export function getPost(id: string): LocalPost | null {
-  return listPosts().find((item) => item.id === id) ?? null;
-}
-
-export function createLocalPost(input: {
-  title: string;
-  content: string;
-}): LocalPost {
-  const post: LocalPost = {
-    id: crypto.randomUUID(),
-    title: input.title,
-    content: input.content,
-    author_name: LOCAL_USER.name,
-    created_at: new Date().toISOString(),
-  };
-  savePosts([post, ...listPosts()]);
-  return post;
+export function upsertSnapshot(snapshot: ValuationSnapshot) {
+  const snapshots = listSnapshots();
+  const index = snapshots.findIndex(
+    (item) =>
+      item.capturedAt === snapshot.capturedAt &&
+      item.accountId === snapshot.accountId &&
+      item.holdingId === snapshot.holdingId,
+  );
+  if (index === -1) {
+    saveSnapshots([...snapshots, snapshot]);
+    return;
+  }
+  const next = [...snapshots];
+  next[index] = snapshot;
+  saveSnapshots(next);
 }
