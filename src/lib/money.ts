@@ -1,14 +1,21 @@
 import type { Currency, Holding } from "@/lib/data/types";
 
-export const USD_KRW = 1380;
+export const FALLBACK_USD_KRW = 1380;
+export const USD_KRW_SYMBOL = "KRW=X";
+export const USD_KRW_SOURCE = "Yahoo Finance";
+export const USD_KRW_PAGE = `https://finance.yahoo.com/quote/${encodeURIComponent(USD_KRW_SYMBOL)}`;
 
-export function toKrwAmount(value: number, currency: Currency) {
-  return currency === "USD" ? value * USD_KRW : value;
+function usableUsdKrw(usdKrw: number) {
+  return Number.isFinite(usdKrw) && usdKrw > 0 ? usdKrw : FALLBACK_USD_KRW;
 }
 
-export function holdingToKrw(holding: Holding, lastPrice: number) {
-  const buy = toKrwAmount(holding.buyPrice * holding.qty, holding.currency);
-  const value = toKrwAmount(lastPrice * holding.qty, holding.currency);
+export function toKrwAmount(value: number, currency: Currency, usdKrw: number) {
+  return currency === "USD" ? value * usableUsdKrw(usdKrw) : value;
+}
+
+export function holdingToKrw(holding: Holding, lastPrice: number, usdKrw: number) {
+  const buy = toKrwAmount(holding.buyPrice * holding.qty, holding.currency, usdKrw);
+  const value = toKrwAmount(lastPrice * holding.qty, holding.currency, usdKrw);
   const pnl = value - buy;
   const rate = buy === 0 ? 0 : (pnl / buy) * 100;
   return { buy, value, pnl, rate };
@@ -36,6 +43,25 @@ export function formatPrice(price: number, currency: Currency) {
     return `$${price.toFixed(2)}`;
   }
   return `${Math.round(price).toLocaleString("ko-KR")}원`;
+}
+
+export function formatFxRate(usdKrw: number) {
+  return `1달러 = ${usableUsdKrw(usdKrw).toLocaleString("ko-KR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}원`;
+}
+
+export function formatFxAsOf(iso: string | null) {
+  if (!iso) {
+    return "";
+  }
+  return `${new Date(iso).toLocaleString("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })} 기준`;
 }
 
 export const PERIODS: { id: "1m" | "6m" | "1y" | "2y"; label: string }[] = [

@@ -93,6 +93,8 @@ export async function searchYahoo(query: string): Promise<SearchHit[]> {
   return matched.length > 0 ? matched : hits;
 }
 
+export const USD_KRW_SYMBOL = "KRW=X";
+
 export async function quoteYahoo(ticker: string): Promise<number | null> {
   const encoded = encodeURIComponent(ticker);
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?range=1d&interval=1m`;
@@ -100,6 +102,23 @@ export async function quoteYahoo(ticker: string): Promise<number | null> {
   const meta = data?.chart?.result?.[0]?.meta;
   const price = Number(meta?.regularMarketPrice);
   return Number.isFinite(price) ? price : null;
+}
+
+export async function quoteUsdKrwYahoo() {
+  const encoded = encodeURIComponent(USD_KRW_SYMBOL);
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?range=1d&interval=1m`;
+  const data = await yahooJson(url);
+  const meta = data?.chart?.result?.[0]?.meta;
+  const price = Number(meta?.regularMarketPrice);
+  if (!Number.isFinite(price) || price < 800 || price > 2500) {
+    return null;
+  }
+  const time = Number(meta?.regularMarketTime);
+  return {
+    usdKrw: price,
+    asOf: Number.isFinite(time) ? new Date(time * 1000).toISOString() : null,
+    symbol: String(meta?.symbol || USD_KRW_SYMBOL),
+  };
 }
 
 export async function quoteManyYahoo(tickers: string[]) {

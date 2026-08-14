@@ -40,6 +40,14 @@ export type Quote = {
   lastPrice: number;
 };
 
+export type FxQuote = {
+  usdKrw: number;
+  asOf: string | null;
+  symbol: string;
+  source: string;
+  fallback: boolean;
+};
+
 export type SearchHit = {
   name: string;
   ticker: string;

@@ -18,6 +18,7 @@ import {
   CardAction,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -28,11 +29,14 @@ import { useUser } from "@/hooks/use-user";
 import type { Holding, Period, PricePoint } from "@/lib/data/types";
 import {
   formatCompactWon,
+  formatFxAsOf,
+  formatFxRate,
   formatPct,
   formatPrice,
   formatWon,
   holdingToKrw,
   PERIODS,
+  USD_KRW_PAGE,
 } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
@@ -87,6 +91,7 @@ export function HomeView() {
     accounts,
     holdings,
     quotes,
+    fx,
     histories,
     loadChart,
   } = portfolio;
@@ -97,10 +102,11 @@ export function HomeView() {
     accounts.length > 0 && accounts.every((item) => selected.has(item.id));
 
   const rows = holdings.filter((item) => selected.has(item.accountId));
+  const usdKrw = fx.usdKrw;
 
   const totals = rows.reduce(
     (acc, item) => {
-      const krw = holdingToKrw(item, quotes[item.ticker] ?? item.buyPrice);
+      const krw = holdingToKrw(item, quotes[item.ticker] ?? item.buyPrice, usdKrw);
       acc.buy += krw.buy;
       acc.value += krw.value;
       return acc;
@@ -125,7 +131,8 @@ export function HomeView() {
   const krValue = rows
     .filter((item) => item.market === "kr")
     .reduce(
-      (sum, item) => sum + holdingToKrw(item, quotes[item.ticker] ?? item.buyPrice).value,
+      (sum, item) =>
+        sum + holdingToKrw(item, quotes[item.ticker] ?? item.buyPrice, usdKrw).value,
       0,
     );
   const usValue = totals.value - krValue;
@@ -135,12 +142,12 @@ export function HomeView() {
       const items = rows.filter((row) => row.accountId === broker.id);
       const value = items.reduce(
         (sum, item) =>
-          sum + holdingToKrw(item, quotes[item.ticker] ?? item.buyPrice).value,
+          sum + holdingToKrw(item, quotes[item.ticker] ?? item.buyPrice, usdKrw).value,
         0,
       );
       const buy = items.reduce(
         (sum, item) =>
-          sum + holdingToKrw(item, quotes[item.ticker] ?? item.buyPrice).buy,
+          sum + holdingToKrw(item, quotes[item.ticker] ?? item.buyPrice, usdKrw).buy,
         0,
       );
       const nextRate = buy === 0 ? 0 : ((value - buy) / buy) * 100;
@@ -166,8 +173,9 @@ export function HomeView() {
         holdings: holdings.filter((item) => selected.has(item.accountId)),
         seriesByTicker,
         quotes,
+        usdKrw,
       }),
-    [holdings, period, quotes, selectedIds, seriesByTicker],
+    [holdings, period, quotes, selectedIds, seriesByTicker, usdKrw],
   );
 
   const tickerKey = rows.map((item) => item.ticker).join(",");
@@ -315,6 +323,26 @@ export function HomeView() {
                 <Stat label="보유 종목" value={`${rows.length}개`} />
               </div>
             </CardContent>
+            <CardFooter className="flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span>{formatFxRate(fx.usdKrw)}</span>
+              <span className="min-w-0 truncate">
+                {fx.fallback ? (
+                  "환율 대기"
+                ) : (
+                  <>
+                    <a
+                      href={USD_KRW_PAGE}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline-offset-2 hover:underline"
+                    >
+                      {fx.source} {fx.symbol}
+                    </a>
+                    {fx.asOf ? ` · ${formatFxAsOf(fx.asOf)}` : null}
+                  </>
+                )}
+              </span>
+            </CardFooter>
           </Card>
 
           <Card>
@@ -437,6 +465,7 @@ export function HomeView() {
                         period={period}
                         quotes={quotes}
                         histories={histories}
+                        usdKrw={usdKrw}
                       />
                     ))}
                   </div>
@@ -456,15 +485,17 @@ function HoldingRow({
   period,
   quotes,
   histories,
+  usdKrw,
 }: {
   item: Holding;
   period: Period;
   quotes: Record<string, number>;
   histories: Record<string, PricePoint[]>;
+  usdKrw: number;
 }) {
   const router = useRouter();
   const currentPrice = quotes[item.ticker] ?? item.buyPrice;
-  const krw = holdingToKrw(item, currentPrice);
+  const krw = holdingToKrw(item, currentPrice, usdKrw);
   const spark = sparkFor(item, period, quotes, histories);
 
   return (

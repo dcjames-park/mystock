@@ -4,16 +4,25 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { isLocalBackend, LOCAL_USER } from "@/lib/data/backend";
 import * as localStore from "@/lib/data/local-store";
 import * as supabaseStore from "@/lib/data/supabase-store";
-import { holdingToKrw, ACCOUNT_COLORS } from "@/lib/money";
+import { holdingToKrw, ACCOUNT_COLORS, FALLBACK_USD_KRW, USD_KRW_SOURCE, USD_KRW_SYMBOL } from "@/lib/money";
 import { todayStamp } from "@/lib/data/trend";
 import type {
   Account,
   AccountColor,
+  FxQuote,
   Holding,
   PricePoint,
   SearchHit,
   ValuationSnapshot,
 } from "@/lib/data/types";
+
+const FALLBACK_FX: FxQuote = {
+  usdKrw: FALLBACK_USD_KRW,
+  asOf: null,
+  symbol: USD_KRW_SYMBOL,
+  source: USD_KRW_SOURCE,
+  fallback: true,
+};
 
 function subscribe(onStoreChange: () => void) {
   localStore.ensureSeeded();
@@ -52,6 +61,7 @@ export function usePortfolio() {
   const [remoteHoldings, setRemoteHoldings] = useState<Holding[]>([]);
   const [remoteSnapshots, setRemoteSnapshots] = useState<ValuationSnapshot[]>([]);
   const [liveQuotes, setLiveQuotes] = useState<Record<string, number>>({});
+  const [fx, setFx] = useState<FxQuote>(FALLBACK_FX);
   const [charts, setCharts] = useState<Record<string, number[]>>({});
   const [histories, setHistories] = useState<Record<string, PricePoint[]>>({});
 
@@ -111,7 +121,12 @@ export function usePortfolio() {
   }, [local]);
 
   const persistTodaySnapshots = useCallback(
-    async (nextHoldings: Holding[], nextQuotes: Record<string, number>, nextAccounts: Account[]) => {
+    async (
+      nextHoldings: Holding[],
+      nextQuotes: Record<string, number>,
+      nextAccounts: Account[],
+      usdKrw: number,
+    ) => {
       const capturedAt = todayStamp();
       const groups = [null, ...nextAccounts.map((item) => item.id)] as Array<string | null>;
       for (const accountId of groups) {
@@ -120,7 +135,11 @@ export function usePortfolio() {
         );
         const totals = rows.reduce(
           (acc, item) => {
-            const krw = holdingToKrw(item, nextQuotes[item.ticker] ?? item.buyPrice);
+            const krw = holdingToKrw(
+              item,
+              nextQuotes[item.ticker] ?? item.buyPrice,
+              usdKrw,
+            );
             acc.value += krw.value;
             acc.buy += krw.buy;
             return acc;
@@ -169,8 +188,47 @@ export function usePortfolio() {
     if (local) {
       localStore.saveQuoteCache(next);
     }
-    await persistTodaySnapshots(holdings, { ...parsed.quoteCache, ...next }, accounts);
-  }, [accounts, holdings, local, parsed.quoteCache, persistTodaySnapshots, tickerKey]);
+    await persistTodaySnapshots(holdings, { ...parsed.quoteCache, ...next }, accounts, fx.usdKrw);
+  }, [accounts, fx.usdKrw, holdings, local, parsed.quoteCache, persistTodaySnapshots, tickerKey]);
+
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+    const cached = localStore.readFxCache();
+    if (cached) {
+      setFx({ ...cached, fallback: false });
+    }
+    let cancelled = false;
+    void fetch("/api/market/fx")
+      .then(async (response) => {
+        if (cancelled || !response.ok) {
+          return;
+        }
+        const data = (await response.json()) as {
+          usdKrw?: number;
+          asOf?: string | null;
+          symbol?: string;
+          source?: string;
+        };
+        if (cancelled || !Number.isFinite(data.usdKrw) || (data.usdKrw ?? 0) <= 0) {
+          return;
+        }
+        const next: FxQuote = {
+          usdKrw: data.usdKrw as number,
+          asOf: data.asOf ?? null,
+          symbol: data.symbol ?? USD_KRW_SYMBOL,
+          source: data.source ?? USD_KRW_SOURCE,
+          fallback: false,
+        };
+        setFx(next);
+        localStore.saveFxCache(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [ready]);
 
   useEffect(() => {
     if (!ready || !tickerKey) {
@@ -196,7 +254,12 @@ export function usePortfolio() {
         if (local) {
           localStore.saveQuoteCache(next);
         }
-        void persistTodaySnapshots(holdings, next, accounts);
+        void persistTodaySnapshots(
+          holdings,
+          next,
+          accounts,
+          localStore.readFxCache()?.usdKrw ?? FALLBACK_USD_KRW,
+        );
       })
       .catch(() => undefined);
     return () => {
@@ -313,6 +376,7 @@ export function usePortfolio() {
     holdings,
     snapshots,
     quotes,
+    fx,
     charts,
     histories,
     addAccount,

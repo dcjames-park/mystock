@@ -39,12 +39,14 @@ export function buildTrend({
   holdings,
   seriesByTicker,
   quotes,
+  usdKrw,
 }: {
   period: Period;
   accountId: string | null;
   holdings: Holding[];
   seriesByTicker: Record<string, PricePoint[]>;
   quotes: Record<string, number>;
+  usdKrw: number;
 }): PeriodPoint[] {
   const relevant = holdings.filter(
     (item) => accountId === null || item.accountId === accountId,
@@ -62,7 +64,7 @@ export function buildTrend({
     const today = localDateStamp();
     const value = relevant.reduce((sum, item) => {
       const price = quotes[item.ticker] ?? item.buyPrice;
-      return sum + toKrwAmount(price * item.qty, item.currency);
+      return sum + toKrwAmount(price * item.qty, item.currency, usdKrw);
     }, 0);
     return [
       {
@@ -99,9 +101,9 @@ export function buildTrend({
       }
       const price =
         lastClose[item.ticker] ?? quotes[item.ticker] ?? item.buyPrice;
-      value += toKrwAmount(price * item.qty, item.currency);
+      value += toKrwAmount(price * item.qty, item.currency, usdKrw);
       if (toDateInput(item.boughtAt) === date) {
-        buy += toKrwAmount(item.buyPrice * item.qty, item.currency);
+        buy += toKrwAmount(item.buyPrice * item.qty, item.currency, usdKrw);
       }
     }
 

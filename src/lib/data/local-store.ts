@@ -6,8 +6,16 @@ const KEYS = {
   holdings: "mystock.holdings",
   snapshots: "mystock.snapshots",
   quotes: "mystock.quotes",
+  fx: "mystock.fx",
   seeded: "mystock.seeded",
 } as const;
+
+export type CachedFx = {
+  usdKrw: number;
+  asOf: string | null;
+  symbol: string;
+  source: string;
+};
 
 export const STORAGE_KEYS = KEYS;
 export const CHANGE_EVENT = "mystock-local-change";
@@ -91,6 +99,21 @@ export function listQuoteCache(): Record<string, number> {
 
 export function saveQuoteCache(quotes: Record<string, number>) {
   writeJson(KEYS.quotes, quotes);
+}
+
+export function readFxCache(): CachedFx | null {
+  const value = readJson<CachedFx | null>(KEYS.fx, null);
+  if (!value || !Number.isFinite(value.usdKrw) || value.usdKrw <= 0) {
+    return null;
+  }
+  return value;
+}
+
+export function saveFxCache(fx: CachedFx) {
+  if (!canUseStorage()) {
+    return;
+  }
+  window.localStorage.setItem(KEYS.fx, JSON.stringify(fx));
 }
 
 export function upsertAccount(account: Account) {

@@ -20,7 +20,7 @@ import { formatPct, formatWon, holdingToKrw } from "@/lib/money";
 export function EditHoldingView() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
-  const { ready, holdings, quotes, updateHolding } = usePortfolio();
+  const { ready, holdings, quotes, fx, updateHolding } = usePortfolio();
   const holding = holdings.find((item) => item.id === params.id);
   const [buy, setBuy] = useState<string | null>(null);
   const [qty, setQty] = useState<string | null>(null);
@@ -43,8 +43,9 @@ export function EditHoldingView() {
         qty: Number(qtyValue) || holding.qty,
       },
       quotes[holding.ticker] ?? holding.buyPrice,
+      fx.usdKrw,
     );
-  }, [buyValue, holding, qtyValue, quotes]);
+  }, [buyValue, fx.usdKrw, holding, qtyValue, quotes]);
 
   if (!ready) {
     return <ScreenSkeleton />;
