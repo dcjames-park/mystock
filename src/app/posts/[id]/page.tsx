@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Header } from "@/components/header";
+import { LocalPostArticle } from "@/components/local-post-article";
+import { isLocalBackend } from "@/lib/data/backend";
 import { createClient } from "@/lib/supabase/server";
 
 type PostDetailPageProps = {
@@ -16,6 +18,23 @@ function formatDate(value: string) {
 
 export default async function PostDetailPage({ params }: PostDetailPageProps) {
   const { id } = await params;
+
+  if (isLocalBackend()) {
+    return (
+      <>
+        <Header />
+        <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+          <Link href="/" className="text-sm text-zinc-500 hover:underline">
+            ← 목록
+          </Link>
+          <div className="mt-4">
+            <LocalPostArticle id={id} />
+          </div>
+        </main>
+      </>
+    );
+  }
+
   const supabase = await createClient();
   const {
     data: { user },

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Header } from "@/components/header";
+import { LocalPostsList } from "@/components/local-posts-list";
+import { isLocalBackend } from "@/lib/data/backend";
 import { createClient } from "@/lib/supabase/server";
 
 function formatDate(value: string) {
@@ -10,6 +12,18 @@ function formatDate(value: string) {
 }
 
 export default async function HomePage() {
+  if (isLocalBackend()) {
+    return (
+      <>
+        <Header />
+        <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+          <h1 className="mb-4 text-xl font-semibold">글 목록</h1>
+          <LocalPostsList />
+        </main>
+      </>
+    );
+  }
+
   const supabase = await createClient();
   const {
     data: { user },

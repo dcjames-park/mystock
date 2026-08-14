@@ -2,6 +2,13 @@
 
 간단한 게시판입니다. Next.js + Supabase Auth(Google) + Vercel 기준으로 구성되어 있습니다.
 
+데이터 저장소는 환경에 따라 갈립니다.
+
+- `pnpm dev` / 로컬 `next start` / Vercel Preview: 브라우저 `localStorage`
+- Vercel Production: Supabase
+
+강제로 바꾸려면 `.env.local`에 `NEXT_PUBLIC_DATA_BACKEND=local` 또는 `supabase`를 넣습니다.
+
 ## 로컬 실행
 
 1. 패키지 설치 (`pnpm`만 사용)
@@ -10,11 +17,22 @@
 pnpm install
 ```
 
-2. 환경변수 파일 만들기
+2. 개발 서버
+
+```bash
+pnpm dev
+```
+
+브라우저에서 `http://localhost:3000`을 엽니다. 로컬에서는 로그인 없이 바로 들어가며, 글은 이 브라우저의 저장소에만 남습니다.
+
+운영 연동을 로컬에서 시험할 때만 아래 환경변수와 Google/Supabase 설정이 필요합니다.
+
+3. (운영 연동 시험 시) 환경변수
 
 `.env.example`을 복사해 `.env.local`을 만들고 값을 넣습니다.
 
 ```bash
+NEXT_PUBLIC_DATA_BACKEND=supabase
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 ```
@@ -22,7 +40,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 - URL / Key: Supabase Dashboard → Project Settings → API
 - Publishable key가 안 보이면 `anon` `public` 키를 `NEXT_PUBLIC_SUPABASE_ANON_KEY`로 넣어도 됩니다.
 
-3. Google 로그인 설정 (Supabase)
+4. (운영 연동 시험 시) Google 로그인 설정 (Supabase)
 
 - Authentication → Providers → Google 활성화
 - Authentication → URL Configuration
@@ -31,21 +49,13 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 
 Google Cloud Console의 OAuth 클라이언트에도 Supabase가 안내하는 Callback URL을 등록해야 합니다.
 
-4. 테이블 만들기
+5. (운영 연동 시험 시) 테이블 만들기
 
 Supabase SQL Editor에서 `supabase/schema.sql` 내용을 실행합니다.
 
-5. 개발 서버
-
-```bash
-pnpm dev
-```
-
-브라우저에서 `http://localhost:3000`을 엽니다. 로그인하지 않으면 로그인 화면으로 이동합니다.
-
 ## 운영 (Vercel)
 
-Vercel 프로젝트 Environment Variables에 아래를 등록합니다.
+Production 배포는 자동으로 Supabase를 씁니다. Vercel 프로젝트 Environment Variables에 아래를 등록합니다.
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`

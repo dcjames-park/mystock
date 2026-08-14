@@ -1,11 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isLocalBackend } from "@/lib/data/backend";
 import { getSupabaseEnv } from "@/lib/supabase/env";
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
+
+  if (isLocalBackend()) {
+    return supabaseResponse;
+  }
 
   const env = getSupabaseEnv();
   if (!env) {

@@ -1,7 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 import { createPost } from "@/app/actions/posts";
+import { isLocalBackend } from "@/lib/data/backend";
+import { createLocalPost } from "@/lib/data/local-store";
 
 type FormState = {
   error: string | null;
@@ -10,7 +13,27 @@ type FormState = {
 const initialState: FormState = { error: null };
 
 export function PostForm() {
+  const router = useRouter();
+  const local = isLocalBackend();
+
   async function submit(_prev: FormState, formData: FormData): Promise<FormState> {
+    const title = String(formData.get("title") ?? "").trim();
+    const content = String(formData.get("content") ?? "").trim();
+
+    if (!title || !content) {
+      return { error: "제목과 내용을 입력해 주세요." };
+    }
+
+    if (title.length > 200) {
+      return { error: "제목은 200자 이하로 입력해 주세요." };
+    }
+
+    if (local) {
+      const post = createLocalPost({ title, content });
+      router.push(`/posts/${post.id}`);
+      return { error: null };
+    }
+
     const result = await createPost(formData);
     if (result?.error) {
       return { error: result.error };

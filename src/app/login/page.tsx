@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { GoogleLoginButton } from "@/components/google-login-button";
+import { isLocalBackend } from "@/lib/data/backend";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 
 type LoginPageProps = {
@@ -6,6 +8,10 @@ type LoginPageProps = {
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
+  if (isLocalBackend()) {
+    redirect("/");
+  }
+
   const { error } = await searchParams;
   const configured = hasSupabaseEnv();
 

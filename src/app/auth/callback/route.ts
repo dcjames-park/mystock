@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
+import { isLocalBackend } from "@/lib/data/backend";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
+
+  if (isLocalBackend()) {
+    return NextResponse.redirect(`${origin}/`);
+  }
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/";
 

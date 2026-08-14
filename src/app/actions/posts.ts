@@ -2,9 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isLocalBackend } from "@/lib/data/backend";
 import { createClient } from "@/lib/supabase/server";
 
 export async function createPost(formData: FormData) {
+  if (isLocalBackend()) {
+    return { error: "로컬 모드에서는 브라우저 저장소에 저장합니다." };
+  }
+
   const title = String(formData.get("title") ?? "").trim();
   const content = String(formData.get("content") ?? "").trim();
 
