@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { GoogleLoginButton } from "@/components/google-login-button";
-import { AppShell } from "@/components/portfolio/app-shell";
+import { AppShell, FormPanel } from "@/components/portfolio/app-shell";
 import { FolioLogo } from "@/components/portfolio/logo";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { isLocalBackend } from "@/lib/data/backend";
@@ -19,8 +19,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const configured = hasSupabaseEnv();
 
   return (
-    <AppShell layout="form">
-      <div className="flex flex-1 flex-col justify-center pt-16">
+    <AppShell header={false}>
+      <FormPanel className="mx-auto flex flex-1 flex-col justify-center pt-16">
         <p className="text-xs font-medium tracking-wide text-primary">
           PERSONAL PORTFOLIO
         </p>
@@ -56,7 +56,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </Alert>
           ) : null}
         </div>
-      </div>
+      </FormPanel>
     </AppShell>
   );
 }

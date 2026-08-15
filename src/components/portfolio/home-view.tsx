@@ -2,16 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Plus, Settings, Trash2 } from "lucide-react";
+import { ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   AppShell,
   ACCOUNT_COLOR,
   pnlClass,
   ScreenSkeleton,
 } from "@/components/portfolio/app-shell";
-import { FolioLogo } from "@/components/portfolio/logo";
 import { ComboChart, Sparkline } from "@/components/portfolio/charts";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,11 +23,10 @@ import {
 import { PeriodPicker } from "@/components/portfolio/period-picker";
 import { usePortfolio } from "@/lib/data/use-portfolio";
 import { buildBuyEvents, buildTrend, toDateInput } from "@/lib/data/trend";
-import { useUser } from "@/hooks/use-user";
 import type { Holding, Period, PricePoint } from "@/lib/data/types";
 import {
-  formatAsOfDate,
   formatFxAsOf,
+  formatQuoteAsOf,
   formatFxRate,
   formatPct,
   formatPriceShort,
@@ -61,6 +58,15 @@ function sparkFor(
 
 const DASH_SUMMARY_KEY = "mystock.dash.summaryOpen";
 const DASH_TREND_KEY = "mystock.dash.trendOpen";
+const HOLDING_SORT_KEY = "mystock.holdingSort";
+
+type HoldingSort = "value" | "rate" | "price";
+
+const HOLDING_SORTS: { id: HoldingSort; label: string }[] = [
+  { id: "value", label: "평가금액" },
+  { id: "rate", label: "수익률" },
+  { id: "price", label: "현재가" },
+];
 
 function useDashOpen(key: string) {
   const [open, setOpen] = useState(false);
@@ -107,18 +113,26 @@ export function HomeView() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [summaryOpen, toggleSummary] = useDashOpen(DASH_SUMMARY_KEY);
   const [trendOpen, toggleTrend] = useDashOpen(DASH_TREND_KEY);
+  const [holdingSort, setHoldingSort] = useState<HoldingSort>("value");
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(HOLDING_SORT_KEY);
+    if (saved === "value" || saved === "rate" || saved === "price") {
+      setHoldingSort(saved);
+    }
+  }, []);
 
   const {
     ready,
-    local,
     accounts,
     holdings,
     quotes,
+    prevCloses,
+    quotesAsOf,
     fx,
     histories,
     loadCharts,
   } = portfolio;
-  const { email, name, ready: userReady } = useUser();
   const activeIds = selectedIds ?? accounts.map((item) => item.id);
   const selected = new Set(activeIds);
   const allSelected =
@@ -162,7 +176,23 @@ export function HomeView() {
   const grouped = accounts
     .filter((item) => selected.has(item.id))
     .map((broker) => {
-      const items = rows.filter((row) => row.accountId === broker.id);
+      const items = rows
+        .filter((row) => row.accountId === broker.id)
+        .sort((a, b) => {
+          const aPrice = quotes[a.ticker] ?? a.buyPrice;
+          const bPrice = quotes[b.ticker] ?? b.buyPrice;
+          const aKrw = holdingToKrw(a, aPrice, usdKrw);
+          const bKrw = holdingToKrw(b, bPrice, usdKrw);
+          if (holdingSort === "rate") {
+            return bKrw.rate - aKrw.rate;
+          }
+          if (holdingSort === "price") {
+            const aKrwPrice = a.currency === "USD" ? aPrice * usdKrw : aPrice;
+            const bKrwPrice = b.currency === "USD" ? bPrice * usdKrw : bPrice;
+            return bKrwPrice - aKrwPrice;
+          }
+          return bKrw.value - aKrw.value;
+        });
       const value = items.reduce(
         (sum, item) =>
           sum + holdingToKrw(item, quotes[item.ticker] ?? item.buyPrice, usdKrw).value,
@@ -223,28 +253,6 @@ export function HomeView() {
   return (
     <AppShell>
       <div className="flex flex-col gap-5 sm:gap-6">
-        <div className="flex items-center gap-2">
-          <FolioLogo
-            markSize={28}
-            wordmarkClassName="text-lg sm:text-xl"
-            onClick={() => {
-              window.location.assign("/");
-            }}
-          />
-          {local ? <Badge variant="secondary">로컬 스토리지</Badge> : null}
-          <span className="flex-1" />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="max-w-[50%] gap-1.5"
-            onClick={() => router.push("/settings")}
-          >
-            <span className="truncate">{userReady ? email || name : "내 계정"}</span>
-            <Settings />
-          </Button>
-        </div>
-
         <div className="flex flex-wrap items-center gap-1.5">
           <Button
             type="button"
@@ -330,6 +338,7 @@ export function HomeView() {
           </Button>
         </div>
 
+        {accounts.length > 0 ? (
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader
@@ -347,8 +356,8 @@ export function HomeView() {
             >
               <CardTitle>{accountMeta.label}</CardTitle>
               <CardAction className="row-span-1 flex items-center gap-2 self-center">
-                <span className="w-[7.25rem] text-right text-xs text-muted-foreground">
-                  {summaryOpen ? formatAsOfDate() : "펼침"}
+                <span className="min-w-[9.5rem] text-right text-xs text-muted-foreground">
+                  {summaryOpen ? formatQuoteAsOf(quotesAsOf) : "펼침"}
                 </span>
                 <ChevronDown
                   className={cn(
@@ -360,8 +369,8 @@ export function HomeView() {
               {summaryOpen ? (
                 <>
                   <CardDescription>총 평가 금액</CardDescription>
-                  <div className="flex flex-wrap items-end gap-2">
-                    <p className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
+                  <div className="flex flex-wrap items-end gap-4">
+                    <p className="font-heading text-xl font-semibold tracking-tight sm:text-2xl">
                       {formatWon(totals.value)}
                     </p>
                     <p className={`text-sm font-semibold ${pnlClass(rate)}`}>
@@ -472,19 +481,63 @@ export function HomeView() {
             ) : null}
           </Card>
         </div>
+        ) : null}
 
         <section className="space-y-5">
-          <div className="flex items-center">
+          <div className="flex flex-wrap items-center gap-2">
             <h2 className="font-heading text-base font-medium sm:text-lg">
               보유 종목
             </h2>
+            {accounts.length > 0 ? (
+              <div className="ml-auto flex flex-wrap items-center gap-1">
+                {HOLDING_SORTS.map((item) => (
+                  <Button
+                    key={item.id}
+                    type="button"
+                    size="sm"
+                    variant={holdingSort === item.id ? "secondary" : "ghost"}
+                    className="h-7 px-2 text-xs"
+                    onClick={() => {
+                      setHoldingSort(item.id);
+                      window.localStorage.setItem(HOLDING_SORT_KEY, item.id);
+                    }}
+                  >
+                    {item.label}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
           </div>
+          {accounts.length === 0 ? (
+            <div className="rounded-xl border border-dashed px-4 py-8 text-center">
+              <p className="font-heading text-base font-medium">아직 계좌가 없습니다</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                계좌를 추가한 뒤 종목을 넣으면 평가와 추이를 볼 수 있습니다.
+              </p>
+              <ol className="mx-auto mt-4 max-w-xs space-y-1 text-left text-sm text-muted-foreground">
+                <li>1. 계좌 추가</li>
+                <li>2. 종목 추가</li>
+              </ol>
+              <Button
+                type="button"
+                className="mt-5"
+                onClick={() => router.push("/accounts/new")}
+              >
+                계좌 추가
+              </Button>
+            </div>
+          ) : null}
+          {accounts.length > 0 && holdings.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              계좌 줄의 + 버튼으로 종목을 추가하세요.
+            </p>
+          ) : null}
           {grouped.map((group) => {
             const open = !collapsed[group.id];
             return (
             <div key={group.id} className="space-y-1">
               <div
-                className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5"
+                className="cursor-pointer rounded-lg px-3 py-2.5"
                 style={{
                   background: `color-mix(in oklch, ${ACCOUNT_COLOR[group.color]} 16%, var(--background))`,
                 }}
@@ -495,63 +548,85 @@ export function HomeView() {
                   }))
                 }
               >
-                <ChevronDown
-                  className={cn(
-                    "size-4 shrink-0 text-muted-foreground transition-transform",
-                    open ? "rotate-0" : "-rotate-90",
-                  )}
-                />
-                <span
-                  className="size-2.5 shrink-0 rounded-full"
-                  style={{ background: ACCOUNT_COLOR[group.color] }}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium tracking-wide text-muted-foreground">
-                    계좌
-                  </p>
-                  <p className="truncate font-heading text-base font-semibold sm:text-lg">
-                    {group.label}
-                  </p>
+                <div className="flex items-center gap-3">
+                  <ChevronDown
+                    className={cn(
+                      "size-4 shrink-0 text-muted-foreground transition-transform",
+                      open ? "rotate-0" : "-rotate-90",
+                    )}
+                  />
+                  <span
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{ background: ACCOUNT_COLOR[group.color] }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium tracking-wide text-muted-foreground">
+                      계좌
+                    </p>
+                    <p className="truncate font-heading text-base font-semibold sm:text-lg">
+                      {group.label}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="outline"
+                      className="bg-background/30 hover:bg-background"
+                      title="계좌 이름 수정"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        router.push(`/accounts/${group.id}/edit`);
+                      }}
+                    >
+                      <Pencil />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="outline"
+                      className="bg-background/30 hover:bg-background"
+                      title="종목 추가"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        router.push(`/holdings/new?accountId=${group.id}`);
+                      }}
+                    >
+                      <Plus />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="outline"
+                      className="bg-background/30 hover:bg-background"
+                      title="계좌 삭제"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        router.push(`/accounts/${group.id}/delete`);
+                      }}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-5 sm:gap-7">
-                  <p className="text-xs text-muted-foreground">
-                    {group.items.length}종목
-                  </p>
-                  <p
-                    className={`whitespace-nowrap text-sm font-semibold sm:text-[15px] ${pnlClass(group.rate)}`}
-                  >
-                    {formatPct(group.rate)}
-                  </p>
-                  <p className="whitespace-nowrap text-sm font-medium text-foreground sm:text-[15px]">
-                    {formatWon(group.value)}
-                  </p>
+                <div className="mt-2 grid grid-cols-3 gap-3 pl-10">
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">종목</p>
+                    <p className="text-sm font-medium">{group.items.length}개</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">수익률</p>
+                    <p className={`text-sm font-semibold ${pnlClass(group.rate)}`}>
+                      {formatPct(group.rate)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">평가금액</p>
+                    <p className="truncate text-sm font-medium">
+                      {formatWon(group.value)}
+                    </p>
+                  </div>
                 </div>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="outline"
-                  className="bg-background/30 hover:bg-background"
-                  title="종목 추가"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    router.push(`/holdings/new?accountId=${group.id}`);
-                  }}
-                >
-                  <Plus />
-                </Button>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="outline"
-                  className="bg-background/30 hover:bg-background"
-                  title="계좌 삭제"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    router.push(`/accounts/${group.id}/delete`);
-                  }}
-                >
-                  <Trash2 />
-                </Button>
               </div>
               {open ? (
                 group.items.length === 0 ? (
@@ -569,6 +644,7 @@ export function HomeView() {
                         item={item}
                         period={period}
                         quotes={quotes}
+                        prevClose={prevCloses[item.ticker]}
                         histories={histories}
                         usdKrw={usdKrw}
                       />
@@ -593,12 +669,14 @@ function HoldingRow({
   item,
   period,
   quotes,
+  prevClose,
   histories,
   usdKrw,
 }: {
   item: Holding;
   period: Period;
   quotes: Record<string, number>;
+  prevClose?: number;
   histories: Record<string, PricePoint[]>;
   usdKrw: number;
 }) {
@@ -606,6 +684,10 @@ function HoldingRow({
   const currentPrice = quotes[item.ticker] ?? item.buyPrice;
   const krw = holdingToKrw(item, currentPrice, usdKrw);
   const spark = sparkFor(item, period, quotes, histories);
+  const dayChange =
+    prevClose && prevClose > 0
+      ? ((currentPrice - prevClose) / prevClose) * 100
+      : null;
 
   return (
     <div
@@ -630,6 +712,12 @@ function HoldingRow({
               <>
                 <span className="mx-1.5">·</span>
                 {item.lots.length}회 매수
+              </>
+            ) : null}
+            {dayChange != null ? (
+              <>
+                <span className="mx-1.5">·</span>
+                <span className={pnlClass(dayChange)}>당일 {formatPct(dayChange)}</span>
               </>
             ) : null}
           </p>

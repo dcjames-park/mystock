@@ -63,6 +63,22 @@ export function formatAsOfDate(value = new Date()) {
   return `${year}.${month}.${day} 기준`;
 }
 
+export function formatQuoteAsOf(iso: string | null) {
+  if (!iso) {
+    return "시세 대기";
+  }
+  const value = new Date(iso);
+  if (Number.isNaN(value.getTime())) {
+    return "시세 대기";
+  }
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  const hh = String(value.getHours()).padStart(2, "0");
+  const mm = String(value.getMinutes()).padStart(2, "0");
+  return `${year}.${month}.${day} ${hh}:${mm} 기준`;
+}
+
 export function formatDateKo(value: string) {
   const [year, month, day] = value.slice(0, 10).split("-");
   if (!year || !month || !day) {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AppShell, ScreenSkeleton } from "@/components/portfolio/app-shell";
+import { AppShell, FormPanel, ScreenSkeleton } from "@/components/portfolio/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { usePortfolio } from "@/lib/data/use-portfolio";
@@ -22,7 +22,7 @@ export function DeleteAccountView() {
 
   if (!account) {
     return (
-      <AppShell layout="form">
+      <AppShell>
         <p className="pt-16 text-sm text-muted-foreground">계좌를 찾을 수 없습니다.</p>
       </AppShell>
     );
@@ -42,8 +42,8 @@ export function DeleteAccountView() {
   }
 
   return (
-    <AppShell layout="form">
-      <div className="pt-12">
+    <AppShell>
+      <FormPanel className="pt-12">
         <p className="text-xs font-medium text-primary">계좌 삭제</p>
         <p className="mt-2 font-heading text-[22px] font-semibold leading-7">
           {account.label}
@@ -74,7 +74,7 @@ export function DeleteAccountView() {
             취소
           </Button>
         </div>
-      </div>
+      </FormPanel>
     </AppShell>
   );
 }

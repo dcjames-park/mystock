@@ -71,7 +71,7 @@ export function LotFormView({ mode }: { mode: "add" | "edit" }) {
 
   if (!holding || (mode === "edit" && !lot)) {
     return (
-      <AppShell layout="form">
+      <AppShell>
         <ScreenHeader
           title={mode === "add" ? "추가 매수" : "매수 수정"}
           onClose={() => router.push("/")}
@@ -117,7 +117,7 @@ export function LotFormView({ mode }: { mode: "add" | "edit" }) {
   }
 
   return (
-    <AppShell layout="form">
+    <AppShell>
       <ScreenHeader
         title={mode === "add" ? "추가 매수" : "매수 수정"}
         onClose={() => router.push(`/holdings/${holdingId}`)}
@@ -130,67 +130,71 @@ export function LotFormView({ mode }: { mode: "add" | "edit" }) {
           이력을 {mode === "add" ? "추가" : "수정"}합니다.
         </p>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label={`매수가 (${holding.currency === "USD" ? "달러" : "원"})`}>
-          <AmountInput
-            value={buy}
-            onChange={setBuy}
-            maxFraction={holding.currency === "USD" ? 2 : 0}
-            suffix={holding.currency === "USD" ? "달러" : "원"}
-          />
-        </Field>
-        <Field label="수량">
-          <AmountInput
-            value={qty}
-            onChange={setQty}
-            maxFraction={4}
-            suffix="주"
-          />
-        </Field>
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+        <div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={`매수가 (${holding.currency === "USD" ? "달러" : "원"})`}>
+              <AmountInput
+                value={buy}
+                onChange={setBuy}
+                maxFraction={holding.currency === "USD" ? 2 : 0}
+                suffix={holding.currency === "USD" ? "달러" : "원"}
+              />
+            </Field>
+            <Field label="수량">
+              <AmountInput
+                value={qty}
+                onChange={setQty}
+                maxFraction={4}
+                suffix="주"
+              />
+            </Field>
+          </div>
+          <Field label="매수일" className="mt-3">
+            <Input
+              type="date"
+              value={boughtOn}
+              max={localDateStamp()}
+              onChange={(event) => setBoughtOn(event.target.value)}
+            />
+          </Field>
+          {error ? (
+            <Alert variant="destructive" className="mt-3">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+          <Button
+            type="button"
+            className="mt-6 w-full lg:w-auto"
+            onClick={() => void handleSave()}
+            disabled={pending}
+          >
+            {pending ? "저장 중..." : "저장"}
+          </Button>
+        </div>
+        {preview ? (
+          <Card size="sm">
+            <CardContent>
+              <p className="text-xs text-muted-foreground">변경 후 평균</p>
+              <div className="mt-2 flex items-end">
+                <div>
+                  <p className="text-xs text-muted-foreground">수익률</p>
+                  <p className={`font-semibold ${pnlClass(preview.rate)}`}>
+                    {formatPct(preview.rate)}
+                  </p>
+                </div>
+                <span className="flex-1" />
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">수익 금액</p>
+                  <p className={`font-semibold ${pnlClass(preview.pnl)}`}>
+                    {formatWon(preview.pnl)}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
-      <Field label="매수일" className="mt-3">
-        <Input
-          type="date"
-          value={boughtOn}
-          max={localDateStamp()}
-          onChange={(event) => setBoughtOn(event.target.value)}
-        />
-      </Field>
-      {preview ? (
-        <Card size="sm" className="mt-5">
-          <CardContent>
-            <p className="text-xs text-muted-foreground">변경 후 평균</p>
-            <div className="mt-2 flex items-end">
-              <div>
-                <p className="text-xs text-muted-foreground">수익률</p>
-                <p className={`font-semibold ${pnlClass(preview.rate)}`}>
-                  {formatPct(preview.rate)}
-                </p>
-              </div>
-              <span className="flex-1" />
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground">수익 금액</p>
-                <p className={`font-semibold ${pnlClass(preview.pnl)}`}>
-                  {formatWon(preview.pnl)}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-      {error ? (
-        <Alert variant="destructive" className="mt-3">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
-      <Button
-        type="button"
-        className="mt-6 w-full"
-        onClick={() => void handleSave()}
-        disabled={pending}
-      >
-        {pending ? "저장 중..." : "저장"}
-      </Button>
     </AppShell>
   );
 }

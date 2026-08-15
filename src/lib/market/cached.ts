@@ -1,4 +1,5 @@
 import {
+  cacheDeletePrefix,
   cacheGet,
   cacheSet,
   CHART_TTL_MS,
@@ -20,13 +21,26 @@ export type CachedChart = {
   lastPrice: number | null;
 };
 
-export async function cachedQuoteSnapshot(tickers: string[]) {
+export type QuoteSnapshotItem = {
+  ticker: string;
+  lastPrice: number;
+  previousClose?: number | null;
+};
+
+export async function cachedQuoteSnapshot(
+  tickers: string[],
+  options?: { fresh?: boolean },
+) {
+  if (options?.fresh) {
+    cacheDeletePrefix("quote:");
+    cacheDeletePrefix("fx");
+  }
   const unique = [...new Set(tickers.filter(Boolean))];
-  const quotes: { ticker: string; lastPrice: number }[] = [];
+  const quotes: QuoteSnapshotItem[] = [];
   const missing: string[] = [];
   for (const ticker of unique) {
-    const hit = cacheGet<{ ticker: string; lastPrice: number }>(`quote:${ticker}`);
-    if (hit) {
+    const hit = cacheGet<QuoteSnapshotItem>(`quote:${ticker}`);
+    if (hit && !options?.fresh) {
       quotes.push(hit);
     } else {
       missing.push(ticker);
@@ -53,13 +67,20 @@ export async function cachedQuoteSnapshot(tickers: string[]) {
   return { quotes, fx: snapshot.fx ?? cachedFx ?? null };
 }
 
-export async function cachedCharts(tickers: string[], period: Period) {
+export async function cachedCharts(
+  tickers: string[],
+  period: Period,
+  options?: { fresh?: boolean },
+) {
+  if (options?.fresh) {
+    cacheDeletePrefix("chart:");
+  }
   const unique = [...new Set(tickers.filter(Boolean))];
   const charts: Record<string, CachedChart> = {};
   const missing: string[] = [];
   for (const ticker of unique) {
     const hit = cacheGet<CachedChart>(`chart:${ticker}:${period}`);
-    if (hit) {
+    if (hit && !options?.fresh) {
       charts[ticker] = hit;
     } else {
       missing.push(ticker);
@@ -81,10 +102,13 @@ export async function cachedChart(ticker: string, period: Period) {
   return charts[ticker] ?? (await chartYahoo(ticker, period));
 }
 
-export async function cachedQuoteDetail(ticker: string) {
+export async function cachedQuoteDetail(ticker: string, options?: { fresh?: boolean }) {
   const key = `detail:${ticker}`;
+  if (options?.fresh) {
+    cacheDeletePrefix(key);
+  }
   const hit = cacheGet<QuoteDetail>(key);
-  if (hit) {
+  if (hit && !options?.fresh) {
     return hit;
   }
   const quote = await quoteDetailsYahoo(ticker);

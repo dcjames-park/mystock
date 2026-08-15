@@ -4,13 +4,14 @@ import { USD_KRW_SOURCE } from "@/lib/money";
 
 export async function GET(request: NextRequest) {
   const raw = request.nextUrl.searchParams.get("tickers") ?? "";
+  const fresh = request.nextUrl.searchParams.get("fresh") === "1";
   const tickers = raw
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
 
   try {
-    const snapshot = await cachedQuoteSnapshot(tickers);
+    const snapshot = await cachedQuoteSnapshot(tickers, { fresh });
     return Response.json(
       {
         quotes: snapshot.quotes,
@@ -20,7 +21,9 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=3600",
+          "Cache-Control": fresh
+            ? "no-store"
+            : "public, s-maxage=3600, stale-while-revalidate=3600",
         },
       },
     );

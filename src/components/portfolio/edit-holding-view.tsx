@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   AppShell,
+  FormPanel,
   ScreenHeader,
   ScreenSkeleton,
 } from "@/components/portfolio/app-shell";
@@ -28,7 +29,7 @@ export function EditHoldingView() {
 
   if (!holding) {
     return (
-      <AppShell layout="form">
+      <AppShell>
         <ScreenHeader title="이름 수정" onClose={() => router.push("/")} />
         <p className="text-sm text-muted-foreground">종목을 찾을 수 없습니다.</p>
       </AppShell>
@@ -61,30 +62,32 @@ export function EditHoldingView() {
   }
 
   return (
-    <AppShell layout="form">
+    <AppShell>
       <ScreenHeader title="이름 수정" onClose={() => router.push(`/holdings/${holdingId}`)} />
-      <div className="mb-4">
-        <p className="font-heading text-xl font-semibold leading-7">{displayName}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {holding.ticker} · {holding.market === "kr" ? "국내" : "해외"} · 매수가와
-          수량은 종목 상세의 매수 이력에서 바꿉니다.
-        </p>
-        <Button
-          type="button"
-          variant="outline"
-          className="mt-4 w-full"
-          onClick={() => void handleRefreshNaverName()}
-          disabled={namePending}
-        >
-          {namePending ? "받는 중..." : "네이버 이름으로 다시 받기"}
-        </Button>
-        {notice ? <p className="mt-2 text-xs text-muted-foreground">{notice}</p> : null}
-      </div>
-      {error ? (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      ) : null}
+      <FormPanel>
+        <div className="mb-4">
+          <p className="font-heading text-xl font-semibold leading-7">{displayName}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {holding.ticker} · {holding.market === "kr" ? "국내" : "해외"} · 매수가와
+            수량은 종목 상세의 매수 이력에서 바꿉니다.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-4 w-full"
+            onClick={() => void handleRefreshNaverName()}
+            disabled={namePending}
+          >
+            {namePending ? "받는 중..." : "네이버 이름으로 다시 받기"}
+          </Button>
+          {notice ? <p className="mt-2 text-xs text-muted-foreground">{notice}</p> : null}
+        </div>
+        {error ? (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+      </FormPanel>
     </AppShell>
   );
 }

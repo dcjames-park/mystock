@@ -7,6 +7,8 @@ const KEYS = {
   holdings: "mystock.holdings",
   snapshots: "mystock.snapshots",
   quotes: "mystock.quotes",
+  prevCloses: "mystock.prevCloses",
+  quotesAt: "mystock.quotesAt",
   fx: "mystock.fx",
   seeded: "mystock.seeded",
 } as const;
@@ -100,6 +102,28 @@ export function listQuoteCache(): Record<string, number> {
 
 export function saveQuoteCache(quotes: Record<string, number>) {
   writeJson(KEYS.quotes, quotes);
+}
+
+export function listPrevCloses(): Record<string, number> {
+  return readJson<Record<string, number>>(KEYS.prevCloses, {});
+}
+
+export function savePrevCloses(values: Record<string, number>) {
+  writeJson(KEYS.prevCloses, values);
+}
+
+export function readQuotesAt(): string | null {
+  if (!canUseStorage()) {
+    return null;
+  }
+  return window.localStorage.getItem(KEYS.quotesAt);
+}
+
+export function saveQuotesAt(iso: string) {
+  if (!canUseStorage()) {
+    return;
+  }
+  window.localStorage.setItem(KEYS.quotesAt, iso);
 }
 
 export function readFxCache(): CachedFx | null {

@@ -51,12 +51,14 @@ export function AddAccountView() {
   }
 
   return (
-    <AppShell layout="form">
+    <AppShell>
       <ScreenHeader
         title="계좌 추가"
         onClose={() => router.push("/")}
         closeVariant="secondary"
       />
+      <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
+      <div>
       <Field label="계좌명">
         <Input
           value={name}
@@ -85,14 +87,15 @@ export function AddAccountView() {
       ) : null}
       <Button
         type="button"
-        className="mt-5 w-full"
+        className="mt-5 w-full lg:w-auto"
         onClick={() => void handleSave()}
         disabled={pending || !label || Boolean(duplicate)}
       >
         {pending ? "추가 중..." : "추가"}
       </Button>
+      </div>
       {accounts.length > 0 ? (
-        <div className="mt-8 space-y-2">
+        <div className="space-y-2">
           <p className="text-xs text-muted-foreground">등록된 계좌</p>
           <div className="space-y-1.5">
             {accounts.map((item) => (
@@ -120,6 +123,7 @@ export function AddAccountView() {
           </div>
         </div>
       ) : null}
+      </div>
     </AppShell>
   );
 }

@@ -3,17 +3,20 @@ import { cachedQuoteDetail } from "@/lib/market/cached";
 
 export async function GET(request: NextRequest) {
   const ticker = request.nextUrl.searchParams.get("ticker") ?? "";
+  const fresh = request.nextUrl.searchParams.get("fresh") === "1";
   if (!ticker) {
     return Response.json({ error: "티커가 필요합니다." }, { status: 400 });
   }
 
   try {
-    const quote = await cachedQuoteDetail(ticker);
+    const quote = await cachedQuoteDetail(ticker, { fresh });
     return Response.json(
       { quote },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+          "Cache-Control": fresh
+            ? "no-store"
+            : "public, s-maxage=300, stale-while-revalidate=600",
         },
       },
     );

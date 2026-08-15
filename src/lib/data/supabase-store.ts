@@ -119,6 +119,20 @@ export async function removeAccount(id: string) {
   }
 }
 
+export async function patchAccount(id: string, input: { label: string }) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("accounts")
+    .update({ label: input.label })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new Error(error?.message ?? "계좌를 수정하지 못했습니다.");
+  }
+  return mapAccount(data);
+}
+
 export async function insertHolding(input: Omit<Holding, "id" | "createdAt" | "updatedAt">) {
   const supabase = createClient();
   const {
@@ -264,7 +278,16 @@ export async function removeLot(holdingId: string, lotId: string) {
 
 export async function patchHolding(
   id: string,
-  input: { buyPrice?: number; qty?: number; boughtAt?: string; name?: string },
+  input: {
+    buyPrice?: number;
+    qty?: number;
+    boughtAt?: string;
+    name?: string;
+    ticker?: string;
+    market?: Holding["market"];
+    kind?: Holding["kind"];
+    currency?: Holding["currency"];
+  },
 ) {
   const supabase = createClient();
   const payload: {
@@ -272,6 +295,10 @@ export async function patchHolding(
     qty?: number;
     bought_at?: string;
     name?: string;
+    ticker?: string;
+    market?: Holding["market"];
+    kind?: Holding["kind"];
+    currency?: Holding["currency"];
     updated_at: string;
   } = { updated_at: new Date().toISOString() };
   if (input.buyPrice !== undefined) {
@@ -285,6 +312,18 @@ export async function patchHolding(
   }
   if (input.name !== undefined) {
     payload.name = input.name;
+  }
+  if (input.ticker !== undefined) {
+    payload.ticker = input.ticker;
+  }
+  if (input.market !== undefined) {
+    payload.market = input.market;
+  }
+  if (input.kind !== undefined) {
+    payload.kind = input.kind;
+  }
+  if (input.currency !== undefined) {
+    payload.currency = input.currency;
   }
   const { data, error } = await supabase
     .from("holdings")

@@ -209,12 +209,14 @@ export function Sparkline({
   height = 52,
   markRatio = null,
   buyPrice,
+  showLegend = false,
 }: {
   values: number[];
   positive: boolean;
   height?: number;
   markRatio?: number | null;
   buyPrice?: number;
+  showLegend?: boolean;
 }) {
   if (values.length === 0) {
     return <div style={{ height }} />;
@@ -246,10 +248,10 @@ export function Sparkline({
         })();
   const buyY = buyPrice == null ? null : yAt(buyPrice);
 
-  return (
+  const chart = (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      className="h-full w-full"
+      className={showLegend ? "block h-[64px] w-full" : "h-full w-full"}
       preserveAspectRatio="none"
     >
       <path d={area} fill={color} opacity={0.12} />
@@ -287,5 +289,29 @@ export function Sparkline({
         </>
       ) : null}
     </svg>
+  );
+
+  if (!showLegend) {
+    return chart;
+  }
+
+  return (
+    <div className="w-full space-y-2">
+      {chart}
+      <div className="flex flex-wrap items-center gap-3.5 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span className="h-0.5 w-3" style={{ background: color }} />
+          주가
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 border-t-2 border-dashed border-foreground/55" />
+          매수평균
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full bg-foreground/70" />
+          매수일
+        </span>
+      </div>
+    </div>
   );
 }

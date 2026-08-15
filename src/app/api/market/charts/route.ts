@@ -7,6 +7,7 @@ const PERIODS: Period[] = ["1m", "6m", "1y", "2y", "5y"];
 export async function GET(request: NextRequest) {
   const raw = request.nextUrl.searchParams.get("tickers") ?? "";
   const period = request.nextUrl.searchParams.get("period") ?? "1y";
+  const fresh = request.nextUrl.searchParams.get("fresh") === "1";
   const tickers = raw
     .split(",")
     .map((item) => item.trim())
@@ -17,12 +18,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const charts = await cachedCharts(tickers, period as Period);
+    const charts = await cachedCharts(tickers, period as Period, { fresh });
     return Response.json(
       { charts },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+          "Cache-Control": fresh
+            ? "no-store"
+            : "public, s-maxage=300, stale-while-revalidate=600",
         },
       },
     );

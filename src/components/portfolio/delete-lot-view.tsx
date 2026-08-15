@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AppShell, ScreenSkeleton } from "@/components/portfolio/app-shell";
+import { AppShell, FormPanel, ScreenSkeleton } from "@/components/portfolio/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { usePortfolio } from "@/lib/data/use-portfolio";
@@ -24,7 +24,7 @@ export function DeleteLotView() {
 
   if (!holding || !lot) {
     return (
-      <AppShell layout="form">
+      <AppShell>
         <p className="pt-16 text-sm text-muted-foreground">매수 이력을 찾을 수 없습니다.</p>
       </AppShell>
     );
@@ -45,8 +45,8 @@ export function DeleteLotView() {
   }
 
   return (
-    <AppShell layout="form">
-      <div className="pt-12">
+    <AppShell>
+      <FormPanel className="pt-12">
         <p className="text-xs text-muted-foreground">매수 이력 삭제</p>
         <p className="mt-2 font-heading text-[22px] font-semibold leading-7">
           {holding.name}
@@ -87,7 +87,7 @@ export function DeleteLotView() {
             취소
           </Button>
         </div>
-      </div>
+      </FormPanel>
     </AppShell>
   );
 }

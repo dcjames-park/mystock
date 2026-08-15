@@ -24,3 +24,11 @@ export function cacheGet<T>(key: string): T | null {
 export function cacheSet<T>(key: string, value: T, ttlMs: number) {
   store.set(key, { value, exp: Date.now() + ttlMs });
 }
+
+export function cacheDeletePrefix(prefix: string) {
+  for (const key of store.keys()) {
+    if (key.startsWith(prefix)) {
+      store.delete(key);
+    }
+  }
+}

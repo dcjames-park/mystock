@@ -136,6 +136,24 @@ function lastFiniteNumber(values: unknown): number | null {
   return null;
 }
 
+function previousCloseFromSpark(item: unknown): number | null {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const row = item as {
+    response?: Array<{
+      meta?: { previousClose?: unknown; chartPreviousClose?: unknown };
+    }>;
+  };
+  const meta = row.response?.[0]?.meta;
+  const previous = Number(meta?.previousClose);
+  if (Number.isFinite(previous) && previous > 0) {
+    return previous;
+  }
+  const chartPrev = Number(meta?.chartPreviousClose);
+  return Number.isFinite(chartPrev) && chartPrev > 0 ? chartPrev : null;
+}
+
 function priceFromSpark(item: unknown): number | null {
   if (!item || typeof item !== "object") {
     return null;
@@ -222,12 +240,22 @@ async function quoteManyYahooSpark(tickers: string[]) {
     batches.map(async (batch) => {
       const url = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${encodeURIComponent(batch.join(","))}&range=1d&interval=1m`;
       const data = await yahooJson(url);
-      const quotes: { ticker: string; lastPrice: number; asOf: string | null }[] = [];
+      const quotes: {
+        ticker: string;
+        lastPrice: number;
+        previousClose: number | null;
+        asOf: string | null;
+      }[] = [];
       for (const ticker of batch) {
         const row = sparkRowByTicker(data, ticker);
         const lastPrice = priceFromSpark(row);
         if (lastPrice != null) {
-          quotes.push({ ticker, lastPrice, asOf: sparkAsOf(row) });
+          quotes.push({
+            ticker,
+            lastPrice,
+            previousClose: previousCloseFromSpark(row),
+            asOf: sparkAsOf(row),
+          });
         }
       }
       return quotes;
@@ -262,7 +290,10 @@ export async function quoteSnapshotYahoo(tickers: string[]) {
   const symbols = unique.includes(USD_KRW_SYMBOL)
     ? unique
     : [...unique, USD_KRW_SYMBOL];
-  const byTicker = new Map<string, { ticker: string; lastPrice: number; asOf: string | null }>();
+  const byTicker = new Map<
+    string,
+    { ticker: string; lastPrice: number; previousClose: number | null; asOf: string | null }
+  >();
   try {
     for (const item of await quoteManyYahooSpark(symbols)) {
       byTicker.set(item.ticker, item);
@@ -274,7 +305,7 @@ export async function quoteSnapshotYahoo(tickers: string[]) {
   const missing = unique.filter((ticker) => !byTicker.has(ticker));
   if (missing.length > 0) {
     for (const item of await quoteManyYahooEach(missing)) {
-      byTicker.set(item.ticker, { ...item, asOf: null });
+      byTicker.set(item.ticker, { ...item, previousClose: null, asOf: null });
     }
   }
 
@@ -292,10 +323,20 @@ export async function quoteSnapshotYahoo(tickers: string[]) {
     quotes: unique
       .map((ticker) => byTicker.get(ticker))
       .filter(
-        (item): item is { ticker: string; lastPrice: number; asOf: string | null } =>
-          item != null && item.ticker !== USD_KRW_SYMBOL,
+        (
+          item,
+        ): item is {
+          ticker: string;
+          lastPrice: number;
+          previousClose: number | null;
+          asOf: string | null;
+        } => item != null && item.ticker !== USD_KRW_SYMBOL,
       )
-      .map(({ ticker, lastPrice }) => ({ ticker, lastPrice })),
+      .map(({ ticker, lastPrice, previousClose }) => ({
+        ticker,
+        lastPrice,
+        previousClose,
+      })),
     fx,
   };
 }

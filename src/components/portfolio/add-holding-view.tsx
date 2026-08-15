@@ -152,13 +152,14 @@ export function AddHoldingView() {
   }
 
   return (
-    <AppShell layout="form">
+    <AppShell>
       <ScreenHeader
         title="종목 추가"
         onClose={() => router.push("/")}
         closeVariant="secondary"
       />
-      <div className="flex flex-col gap-4">
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+        <div className="flex flex-col gap-4">
         <Field label="계좌">
           {accounts.length === 0 ? (
             <Button
@@ -237,7 +238,6 @@ export function AddHoldingView() {
                     {held ? (
                       <Button
                         type="button"
-                        variant="ghost"
                         size="sm"
                         onClick={() => router.push(`/holdings/${held.id}/buy`)}
                       >
@@ -246,7 +246,6 @@ export function AddHoldingView() {
                     ) : (
                       <Button
                         type="button"
-                        variant="ghost"
                         size="sm"
                         onClick={() => handleSelect(item)}
                       >
@@ -264,7 +263,9 @@ export function AddHoldingView() {
         <Field label="야후 티커">
           <Input value={selected?.ticker ?? ""} placeholder="찾기에서 선택" disabled />
         </Field>
+        </div>
 
+        <div className="flex flex-col gap-4">
         {existingHolding ? (
           <>
             <Alert>
@@ -324,6 +325,7 @@ export function AddHoldingView() {
             </Button>
           </>
         )}
+        </div>
       </div>
     </AppShell>
   );

@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { isLocalBackend, LOCAL_USER } from "@/lib/data/backend";
 import * as localStore from "@/lib/data/local-store";
 import * as supabaseStore from "@/lib/data/supabase-store";
+import { canonicalTicker, resolveCsvMeta, type CsvLotRow } from "@/lib/data/csv";
 import { applyLotSummary, hydrateHoldings } from "@/lib/data/lots";
 import { holdingToKrw, nextAccountColor, FALLBACK_USD_KRW, USD_KRW_SOURCE, USD_KRW_SYMBOL } from "@/lib/money";
-import { todayStamp } from "@/lib/data/trend";
+import { todayStamp, toBoughtAt } from "@/lib/data/trend";
 import type {
   Account,
   FxQuote,
@@ -63,6 +64,14 @@ export function usePortfolio() {
   const [remoteHoldings, setRemoteHoldings] = useState<Holding[]>([]);
   const [remoteSnapshots, setRemoteSnapshots] = useState<ValuationSnapshot[]>([]);
   const [liveQuotes, setLiveQuotes] = useState<Record<string, number>>({});
+  const [prevCloses, setPrevCloses] = useState<Record<string, number>>(() =>
+    localStore.listPrevCloses(),
+  );
+  const [quotesAsOf, setQuotesAsOf] = useState<string | null>(() =>
+    localStore.readQuotesAt(),
+  );
+  const [quotesRefreshing, setQuotesRefreshing] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
   const [fx, setFx] = useState<FxQuote>(FALLBACK_FX);
   const [charts, setCharts] = useState<Record<string, number[]>>({});
   const [histories, setHistories] = useState<Record<string, PricePoint[]>>({});
@@ -177,7 +186,7 @@ export function usePortfolio() {
 
   const applySnapshot = useCallback(
     async (data: {
-      quotes: { ticker: string; lastPrice: number }[];
+      quotes: { ticker: string; lastPrice: number; previousClose?: number | null }[];
       fx?: {
         usdKrw?: number;
         asOf?: string | null;
@@ -186,8 +195,12 @@ export function usePortfolio() {
       } | null;
     }) => {
       const next: Record<string, number> = {};
+      const nextPrev: Record<string, number> = {};
       for (const item of data.quotes) {
         next[item.ticker] = item.lastPrice;
+        if (item.previousClose != null && item.previousClose > 0) {
+          nextPrev[item.ticker] = item.previousClose;
+        }
       }
       if (Object.keys(next).length > 0) {
         setLiveQuotes((prev) => ({ ...prev, ...next }));
@@ -195,6 +208,16 @@ export function usePortfolio() {
           localStore.saveQuoteCache({ ...parsed.quoteCache, ...next });
         }
       }
+      if (Object.keys(nextPrev).length > 0) {
+        setPrevCloses((prev) => {
+          const merged = { ...prev, ...nextPrev };
+          localStore.savePrevCloses(merged);
+          return merged;
+        });
+      }
+      const asOf = new Date().toISOString();
+      setQuotesAsOf(asOf);
+      localStore.saveQuotesAt(asOf);
       let usdKrw = fx.usdKrw;
       if (data.fx && Number.isFinite(data.fx.usdKrw) && (data.fx.usdKrw ?? 0) > 0) {
         const nextFx: FxQuote = {
@@ -220,18 +243,95 @@ export function usePortfolio() {
     [accounts, fx.usdKrw, holdings, local, parsed.quoteCache, persistTodaySnapshots],
   );
 
+  const loadCharts = useCallback(
+    async (tickers: string[], period: string, options?: { fresh?: boolean }) => {
+      const unique = [...new Set(tickers.filter(Boolean))];
+      const missing = unique.filter((ticker) => {
+        const key = `${ticker}:${period}`;
+        if (options?.fresh) {
+          return !inflightCharts.current.has(key);
+        }
+        return !historiesRef.current[key] && !inflightCharts.current.has(key);
+      });
+      if (missing.length === 0) {
+        return;
+      }
+      for (const ticker of missing) {
+        inflightCharts.current.add(`${ticker}:${period}`);
+      }
+      try {
+        const response = await fetch(
+          `/api/market/charts?tickers=${encodeURIComponent(missing.join(","))}&period=${period}${
+            options?.fresh ? "&fresh=1" : ""
+          }`,
+        );
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as {
+          charts?: Record<string, { prices?: number[]; series?: PricePoint[] }>;
+        };
+        const nextCharts: Record<string, number[]> = {};
+        const nextHistories: Record<string, PricePoint[]> = {};
+        for (const ticker of missing) {
+          const item = data.charts?.[ticker];
+          if (!item) {
+            continue;
+          }
+          const key = `${ticker}:${period}`;
+          nextCharts[key] = item.prices ?? [];
+          nextHistories[key] = item.series ?? [];
+        }
+        if (Object.keys(nextHistories).length > 0) {
+          setCharts((prev) => ({ ...prev, ...nextCharts }));
+          setHistories((prev) => ({ ...prev, ...nextHistories }));
+        }
+      } finally {
+        for (const ticker of missing) {
+          inflightCharts.current.delete(`${ticker}:${period}`);
+        }
+      }
+    },
+    [],
+  );
+
   const refreshQuotes = useCallback(async () => {
-    const response = await fetch(`/api/market/quotes?tickers=${encodeURIComponent(tickerKey)}`);
-    if (!response.ok) {
-      return;
+    setQuotesRefreshing(true);
+    try {
+      const response = await fetch(
+        `/api/market/quotes?tickers=${encodeURIComponent(tickerKey)}&fresh=1`,
+      );
+      if (!response.ok) {
+        return;
+      }
+      const data = (await response.json()) as {
+        quotes: { ticker: string; lastPrice: number; previousClose?: number | null }[];
+        fx?: FxQuote | null;
+      };
+      lastQuoteFetch.current = { key: tickerKey, at: Date.now() };
+      await applySnapshot(data);
+      const byPeriod = new Map<string, string[]>();
+      for (const key of Object.keys(historiesRef.current)) {
+        const sep = key.lastIndexOf(":");
+        if (sep < 0) {
+          continue;
+        }
+        const ticker = key.slice(0, sep);
+        const period = key.slice(sep + 1);
+        const list = byPeriod.get(period) ?? [];
+        list.push(ticker);
+        byPeriod.set(period, list);
+      }
+      await Promise.all(
+        [...byPeriod.entries()].map(([period, tickers]) =>
+          loadCharts(tickers, period, { fresh: true }),
+        ),
+      );
+      setRefreshToken((value) => value + 1);
+    } finally {
+      setQuotesRefreshing(false);
     }
-    const data = (await response.json()) as {
-      quotes: { ticker: string; lastPrice: number }[];
-      fx?: FxQuote | null;
-    };
-    lastQuoteFetch.current = { key: tickerKey, at: Date.now() };
-    await applySnapshot(data);
-  }, [applySnapshot, tickerKey]);
+  }, [applySnapshot, loadCharts, tickerKey]);
 
   useEffect(() => {
     if (!ready) {
@@ -254,7 +354,7 @@ export function usePortfolio() {
           return;
         }
         const data = (await response.json()) as {
-          quotes: { ticker: string; lastPrice: number }[];
+          quotes: { ticker: string; lastPrice: number; previousClose?: number | null }[];
           fx?: FxQuote | null;
         };
         if (cancelled) {
@@ -305,6 +405,170 @@ export function usePortfolio() {
       await reloadRemote();
     },
     [local, reloadRemote],
+  );
+
+  const updateAccount = useCallback(
+    async (id: string, label: string) => {
+      const nextLabel = label.trim();
+      const exists = accounts.some(
+        (item) =>
+          item.id !== id &&
+          item.label.trim().toLowerCase() === nextLabel.toLowerCase(),
+      );
+      if (exists) {
+        throw new Error("이미 등록된 계좌명입니다.");
+      }
+      if (local) {
+        const current = localStore.listAccounts().find((item) => item.id === id);
+        if (!current) {
+          throw new Error("계좌를 찾을 수 없습니다.");
+        }
+        localStore.upsertAccount({ ...current, label: nextLabel });
+        return;
+      }
+      await supabaseStore.patchAccount(id, { label: nextLabel });
+      await reloadRemote();
+    },
+    [accounts, local, reloadRemote],
+  );
+
+  const importLots = useCallback(
+    async (rows: CsvLotRow[]) => {
+      const accountByName = new Map(
+        accounts.map((item) => [item.label.trim().toLowerCase(), item]),
+      );
+      const holdingByKey = new Map(
+        holdings.map((item) => [`${item.accountId}:${canonicalTicker(item.ticker)}`, item]),
+      );
+      const resolvedByTicker = new Map<string, Awaited<ReturnType<typeof resolveCsvMeta>>>();
+      for (const row of rows) {
+        const nameKey = row.account.trim().toLowerCase();
+        let account = accountByName.get(nameKey);
+        if (!account) {
+          const color = nextAccountColor(
+            [...accountByName.values()].map((item) => item.color),
+          );
+          if (local) {
+            account = {
+              id: crypto.randomUUID(),
+              label: row.account.trim(),
+              color,
+              createdAt: new Date().toISOString(),
+            };
+            localStore.upsertAccount(account);
+          } else {
+            account = await supabaseStore.insertAccount({
+              label: row.account.trim(),
+              color,
+            });
+          }
+          accountByName.set(nameKey, account);
+        }
+        const cacheKey = canonicalTicker(row.ticker);
+        let meta = resolvedByTicker.get(cacheKey);
+        if (!meta) {
+          meta = await resolveCsvMeta(row);
+          resolvedByTicker.set(cacheKey, meta);
+          resolvedByTicker.set(canonicalTicker(meta.ticker), meta);
+        }
+        const holdingKey = `${account.id}:${canonicalTicker(meta.ticker)}`;
+        const existing = holdingByKey.get(holdingKey);
+        const boughtAt = toBoughtAt(row.boughtOn);
+        const currency = meta.market === "kr" ? "KRW" : "USD";
+        if (existing) {
+          const changed =
+            existing.name !== meta.name ||
+            existing.market !== meta.market ||
+            existing.kind !== meta.kind ||
+            existing.ticker !== meta.ticker;
+          if (changed) {
+            if (local) {
+              localStore.upsertHolding({
+                ...existing,
+                name: meta.name,
+                ticker: meta.ticker,
+                market: meta.market,
+                kind: meta.kind,
+                currency,
+                updatedAt: new Date().toISOString(),
+              });
+            } else {
+              await supabaseStore.patchHolding(existing.id, {
+                name: meta.name,
+                ticker: meta.ticker,
+                market: meta.market,
+                kind: meta.kind,
+                currency,
+              });
+            }
+          }
+          if (local) {
+            const next = localStore.addLot(existing.id, {
+              buyPrice: row.buyPrice,
+              qty: row.qty,
+              boughtAt,
+            });
+            if (next) {
+              holdingByKey.set(holdingKey, next);
+            }
+          } else {
+            const next = await supabaseStore.addLot(existing.id, {
+              buyPrice: row.buyPrice,
+              qty: row.qty,
+              boughtAt,
+            });
+            holdingByKey.set(holdingKey, next);
+          }
+          continue;
+        }
+        if (local) {
+          const now = new Date().toISOString();
+          const id = crypto.randomUUID();
+          const holding = applyLotSummary({
+            accountId: account.id,
+            name: meta.name,
+            ticker: meta.ticker,
+            market: meta.market,
+            kind: meta.kind,
+            currency,
+            id,
+            lots: [
+              {
+                id: crypto.randomUUID(),
+                holdingId: id,
+                buyPrice: row.buyPrice,
+                qty: row.qty,
+                boughtAt,
+                createdAt: now,
+                updatedAt: now,
+              },
+            ],
+            createdAt: now,
+            updatedAt: now,
+          });
+          localStore.upsertHolding(holding);
+          holdingByKey.set(holdingKey, holding);
+        } else {
+          const holding = await supabaseStore.insertHolding({
+            accountId: account.id,
+            name: meta.name,
+            ticker: meta.ticker,
+            market: meta.market,
+            kind: meta.kind,
+            buyPrice: row.buyPrice,
+            qty: row.qty,
+            currency,
+            boughtAt,
+            lots: [],
+          });
+          holdingByKey.set(holdingKey, holding);
+        }
+      }
+      if (!local) {
+        await reloadRemote();
+      }
+    },
+    [accounts, holdings, local, reloadRemote],
   );
 
   const addLot = useCallback(
@@ -391,7 +655,16 @@ export function usePortfolio() {
   const updateHolding = useCallback(
     async (
       id: string,
-      input: { buyPrice?: number; qty?: number; boughtAt?: string; name?: string },
+      input: {
+        buyPrice?: number;
+        qty?: number;
+        boughtAt?: string;
+        name?: string;
+        ticker?: string;
+        market?: Holding["market"];
+        kind?: Holding["kind"];
+        currency?: Holding["currency"];
+      },
     ) => {
       if (local) {
         const current = localStore.listHoldings().find((item) => item.id === id);
@@ -423,50 +696,6 @@ export function usePortfolio() {
     [local, reloadRemote],
   );
 
-  const loadCharts = useCallback(async (tickers: string[], period: string) => {
-    const unique = [...new Set(tickers.filter(Boolean))];
-    const missing = unique.filter((ticker) => {
-      const key = `${ticker}:${period}`;
-      return !historiesRef.current[key] && !inflightCharts.current.has(key);
-    });
-    if (missing.length === 0) {
-      return;
-    }
-    for (const ticker of missing) {
-      inflightCharts.current.add(`${ticker}:${period}`);
-    }
-    try {
-      const response = await fetch(
-        `/api/market/charts?tickers=${encodeURIComponent(missing.join(","))}&period=${period}`,
-      );
-      if (!response.ok) {
-        return;
-      }
-      const data = (await response.json()) as {
-        charts?: Record<string, { prices?: number[]; series?: PricePoint[] }>;
-      };
-      const nextCharts: Record<string, number[]> = {};
-      const nextHistories: Record<string, PricePoint[]> = {};
-      for (const ticker of missing) {
-        const item = data.charts?.[ticker];
-        if (!item) {
-          continue;
-        }
-        const key = `${ticker}:${period}`;
-        nextCharts[key] = item.prices ?? [];
-        nextHistories[key] = item.series ?? [];
-      }
-      if (Object.keys(nextHistories).length > 0) {
-        setCharts((prev) => ({ ...prev, ...nextCharts }));
-        setHistories((prev) => ({ ...prev, ...nextHistories }));
-      }
-    } finally {
-      for (const ticker of missing) {
-        inflightCharts.current.delete(`${ticker}:${period}`);
-      }
-    }
-  }, []);
-
   const loadChart = useCallback(
     async (ticker: string, period: string) => {
       await loadCharts([ticker], period);
@@ -482,11 +711,17 @@ export function usePortfolio() {
     holdings,
     snapshots,
     quotes,
+    prevCloses,
+    quotesAsOf,
+    quotesRefreshing,
+    refreshToken,
     fx,
     charts,
     histories,
     addAccount,
+    updateAccount,
     removeAccount,
+    importLots,
     addHolding,
     addLot,
     updateLot,

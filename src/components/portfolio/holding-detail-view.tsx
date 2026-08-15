@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import {
+  ACCOUNT_COLOR,
   AppShell,
   Field,
   pnlClass,
@@ -90,6 +91,7 @@ export function HoldingDetailView() {
     fx,
     histories,
     loadChart,
+    refreshToken,
   } = usePortfolio();
   const holding = holdings.find((item) => item.id === params.id);
   const account = accounts.find((item) => item.id === holding?.accountId);
@@ -186,7 +188,11 @@ export function HoldingDetailView() {
       return;
     }
     let cancelled = false;
-    void fetch(`/api/market/quote?ticker=${encodeURIComponent(holding.ticker)}`)
+    void fetch(
+      `/api/market/quote?ticker=${encodeURIComponent(holding.ticker)}${
+        refreshToken > 0 ? "&fresh=1" : ""
+      }`,
+    )
       .then(async (response) => {
         if (!response.ok) {
           return;
@@ -200,7 +206,7 @@ export function HoldingDetailView() {
     return () => {
       cancelled = true;
     };
-  }, [holding]);
+  }, [holding, refreshToken]);
 
   if (!ready) {
     return <ScreenSkeleton />;
@@ -208,7 +214,7 @@ export function HoldingDetailView() {
 
   if (!holding || !krw) {
     return (
-      <AppShell layout="form">
+      <AppShell>
         <ScreenHeader
           title="종목 상세"
           onClose={() => router.push("/")}
@@ -227,10 +233,8 @@ export function HoldingDetailView() {
     detail?.week52High && detail.week52High > 0
       ? ((currentPrice / detail.week52High) * 100)
       : null;
-  const displayName = detail?.longName || detail?.shortName || holding.name;
-
   return (
-    <AppShell layout="form">
+    <AppShell>
       <ScreenHeader
         title="종목 상세"
         onClose={() => router.push("/")}
@@ -239,7 +243,20 @@ export function HoldingDetailView() {
       <div className="flex flex-col gap-4">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <p className="font-heading text-xl font-semibold leading-7">{displayName}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-heading text-xl font-semibold leading-7">{holding.name}</p>
+              {account ? (
+                <span
+                  className="inline-flex max-w-full shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                  style={{
+                    background: `color-mix(in oklch, ${ACCOUNT_COLOR[account.color]} 18%, var(--background))`,
+                    color: ACCOUNT_COLOR[account.color],
+                  }}
+                >
+                  {account.label}
+                </span>
+              ) : null}
+            </div>
             <p className="mt-1 text-xs text-muted-foreground">
               {holding.ticker}
               <span className="mx-1.5">·</span>
@@ -253,6 +270,34 @@ export function HoldingDetailView() {
                 </>
               ) : null}
             </p>
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                className="border-[#03C75A]/30 bg-[#03C75A]/12 text-[#03C75A] hover:bg-[#03C75A]/20 hover:text-[#03C75A]"
+                onClick={() =>
+                  window.open(
+                    naverUrl ?? naverFinanceUrl(holding.ticker, holding.market, holding.kind),
+                    "_blank",
+                    "noreferrer",
+                  )
+                }
+              >
+                네이버 증권
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                className="border-[#6001D2]/30 bg-[#6001D2]/12 text-[#6001D2] hover:bg-[#6001D2]/20 hover:text-[#6001D2] dark:border-[#9B6DFF]/35 dark:bg-[#9B6DFF]/15 dark:text-[#C4A6FF] dark:hover:bg-[#9B6DFF]/25 dark:hover:text-[#C4A6FF]"
+                onClick={() =>
+                  window.open(yahooFinanceUrl(holding.ticker), "_blank", "noreferrer")
+                }
+              >
+                Yahoo Finance
+              </Button>
+            </div>
           </div>
           <div className="flex shrink-0 items-center">
             <Button
@@ -277,6 +322,8 @@ export function HoldingDetailView() {
           </div>
         </div>
 
+        <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+        <div className="flex flex-col gap-4">
         <Card>
           <CardHeader>
             <CardDescription>{formatAsOfDate()}</CardDescription>
@@ -310,7 +357,7 @@ export function HoldingDetailView() {
               <Field label="계좌">
                 <p className="font-medium">{account?.label ?? "-"}</p>
               </Field>
-              <Field label="포트폴리오 비중">
+              <Field label="계좌 내 비중">
                 <p className="font-medium">{weight.toFixed(1)}%</p>
                 <p className="text-xs text-muted-foreground">
                   {account?.label ?? "해당 계좌"} 평가금액 대비
@@ -470,35 +517,36 @@ export function HoldingDetailView() {
             </Table>
           </CardContent>
         </Card>
+        </div>
 
+        <div className="flex flex-col gap-4">
         <Card>
           <CardHeader>
             <CardTitle>가격 추이</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <PeriodPicker value={period} onChange={setPeriod} />
-            <div className="h-16">
-              <Sparkline
-                values={series.map((item) => item.close)}
-                positive={krw.rate >= 0}
-                height={64}
-                markRatio={
-                  series.length > 1
-                    ? (() => {
-                        const buy = toDateInput(holding.boughtAt);
-                        const first = series[0]?.date;
-                        const last = series[series.length - 1]?.date;
-                        if (!first || !last || buy < first || buy > last) {
-                          return null;
-                        }
-                        const index = series.findIndex((item) => item.date >= buy);
-                        return index < 0 ? null : index / (series.length - 1);
-                      })()
-                    : null
-                }
-                buyPrice={holding.buyPrice}
-              />
-            </div>
+            <Sparkline
+              values={series.map((item) => item.close)}
+              positive={krw.rate >= 0}
+              height={64}
+              showLegend
+              markRatio={
+                series.length > 1
+                  ? (() => {
+                      const buy = toDateInput(holding.boughtAt);
+                      const first = series[0]?.date;
+                      const last = series[series.length - 1]?.date;
+                      if (!first || !last || buy < first || buy > last) {
+                        return null;
+                      }
+                      const index = series.findIndex((item) => item.date >= buy);
+                      return index < 0 ? null : index / (series.length - 1);
+                    })()
+                  : null
+              }
+              buyPrice={holding.buyPrice}
+            />
             <ComboChart
               labels={trend.map((item) => item.label)}
               dates={trend.map((item) => item.date)}
@@ -591,32 +639,7 @@ export function HoldingDetailView() {
             </Field>
           </CardContent>
         </Card>
-
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={() =>
-              window.open(
-                naverUrl ?? naverFinanceUrl(holding.ticker, holding.market, holding.kind),
-                "_blank",
-                "noreferrer",
-              )
-            }
-          >
-            네이버 증권
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={() =>
-              window.open(yahooFinanceUrl(holding.ticker), "_blank", "noreferrer")
-            }
-          >
-            Yahoo Finance
-          </Button>
+        </div>
         </div>
       </div>
     </AppShell>
