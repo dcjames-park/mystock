@@ -61,3 +61,5 @@ Production 배포는 자동으로 Supabase를 씁니다. Vercel 프로젝트 Env
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
 Supabase Redirect URLs에는 Vercel 도메인의 `/auth/callback`도 추가합니다.
+
+Free 플랜 프로젝트는 약 7일 동안 DB 요청이 없으면 일시 중지됩니다. Production에서는 Vercel Cron이 매일 한 번 `/api/health`를 호출해 `accounts`를 한 줄 조회합니다. 시각은 UTC 15:00(한국 시간 다음날 00:00)입니다. Vercel에 `CRON_SECRET`을 넣으면 그 요청만 통과합니다. 한 시간마다 돌리려면 Vercel Pro에서 `vercel.json`의 schedule을 `0 * * * *`로 바꾸면 됩니다.
