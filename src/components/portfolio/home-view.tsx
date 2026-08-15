@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
+  Check,
   ChevronDown,
   Pencil,
   Plus,
@@ -68,6 +70,7 @@ function sparkFor(
 const DASH_SUMMARY_KEY = "mystock.dash.summaryOpen";
 const DASH_TREND_KEY = "mystock.dash.trendOpen";
 const HOLDING_SORT_KEY = "mystock.holdingSort";
+const SELECTED_ACCOUNTS_KEY = "mystock.selectedAccounts";
 
 type HoldingSort = "value" | "rate" | "change";
 type SortDir = "asc" | "desc";
@@ -91,6 +94,29 @@ function parseHoldingSort(raw: string | null): { id: HoldingSort; dir: SortDir }
     id: isHoldingSort(id) ? id : "value",
     dir: dir === "asc" ? "asc" : "desc",
   };
+}
+
+function parseSelectedIds(raw: string | null): string[] | null {
+  if (raw == null || raw === "") {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
+      return null;
+    }
+    return parsed as string[];
+  } catch {
+    return null;
+  }
+}
+
+function persistSelectedIds(ids: string[] | null) {
+  if (ids == null) {
+    window.localStorage.removeItem(SELECTED_ACCOUNTS_KEY);
+    return;
+  }
+  window.localStorage.setItem(SELECTED_ACCOUNTS_KEY, JSON.stringify(ids));
 }
 
 function dayChangePct(price: number, prevClose?: number) {
@@ -229,7 +255,7 @@ function AccountChipBar({
       type="button"
       size="icon-sm"
       variant="outline"
-      className="size-10 shrink-0 rounded-full"
+      className="size-12 shrink-0 rounded-full"
       title="계좌 추가"
       onClick={onAdd}
     >
@@ -243,7 +269,7 @@ function AccountChipBar({
           type="button"
           size="sm"
           variant="outline"
-          className="h-10 shrink-0 rounded-full px-3.5 text-sm"
+          className="h-12 shrink-0 rounded-full px-4 text-sm"
           style={
             allSelected
               ? {
@@ -267,7 +293,7 @@ function AccountChipBar({
             type="button"
             size="sm"
             variant="outline"
-            className="h-10 shrink-0 rounded-full px-3.5 text-sm"
+            className="h-12 shrink-0 rounded-full px-4 text-sm"
             style={
               on
                 ? {
@@ -310,6 +336,169 @@ function AccountChipBar({
   );
 }
 
+function accountFilterLabel(
+  selectedAccounts: Account[],
+  allSelected: boolean,
+) {
+  if (selectedAccounts.length === 0) {
+    return "선택 없음";
+  }
+  if (allSelected) {
+    return "전체";
+  }
+  return selectedAccounts.map((item) => item.label).join(" · ");
+}
+
+function AccountSheetDock({
+  accounts,
+  selected,
+  selectedAccounts,
+  allSelected,
+  onToggleAll,
+  onToggle,
+  onAdd,
+}: {
+  accounts: Account[];
+  selected: Set<string>;
+  selectedAccounts: Account[];
+  allSelected: boolean;
+  onToggleAll: () => void;
+  onToggle: (id: string) => void;
+  onAdd: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const label = accountFilterLabel(selectedAccounts, allSelected);
+
+  return createPortal(
+    <div className="sm:hidden">
+      {open ? (
+        <button
+          type="button"
+          aria-label="닫기"
+          className="fixed inset-0 z-40 bg-zinc-900/40 backdrop-blur-[2px] dark:bg-black/50"
+          onClick={() => setOpen(false)}
+        />
+      ) : null}
+      <div className="fixed inset-x-0 bottom-0 z-40">
+        {open ? (
+          <div className="rounded-t-2xl border-t bg-card shadow-[0_-12px_32px_-12px_rgb(0_0_0/0.28)]">
+            <div className="flex justify-center pt-2">
+              <span className="h-1 w-10 rounded-full bg-muted-foreground/30" />
+            </div>
+            <p className="px-4 pb-2 pt-3 text-base font-medium">계좌 선택</p>
+            <div className="max-h-[50dvh] overflow-y-auto px-2 pb-1">
+              {accounts.length > 0 ? (
+                <button
+                  type="button"
+                  className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 py-3.5 text-left text-base"
+                  onClick={onToggleAll}
+                >
+                  <CheckMark on={allSelected} />
+                  전체
+                </button>
+              ) : null}
+              {accounts.map((item) => {
+                const on = selected.has(item.id);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 py-3.5 text-left text-base"
+                    onClick={() => onToggle(item.id)}
+                  >
+                    <CheckMark on={on} />
+                    <span
+                      className="size-2.5 shrink-0 rounded-full"
+                      style={{ background: ACCOUNT_COLOR[item.color] }}
+                    />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+        <div className="border-t bg-background/95 pt-2 shadow-[0_-8px_24px_-12px_rgb(0_0_0/0.15)] backdrop-blur-md pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto flex max-w-6xl items-center gap-1.5 px-4">
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="outline"
+              className="size-12 shrink-0 rounded-full"
+              title="계좌 추가"
+              onClick={() => {
+                setOpen(false);
+                onAdd();
+              }}
+            >
+              <Plus />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              aria-expanded={open}
+              className="h-12 min-w-0 flex-1 justify-between rounded-full px-4 text-sm"
+              onClick={() => setOpen((prev) => !prev)}
+            >
+              {selectedAccounts.length === 1 ? (
+                <span
+                  className="size-2 shrink-0 rounded-full"
+                  style={{
+                    background: ACCOUNT_COLOR[selectedAccounts[0].color],
+                  }}
+                />
+              ) : null}
+              <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+              <ChevronDown
+                className={cn(
+                  "size-4 shrink-0 text-muted-foreground transition-transform",
+                  open && "rotate-180",
+                )}
+              />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function CheckMark({ on }: { on: boolean }) {
+  return (
+    <span
+      className={cn(
+        "flex size-6 shrink-0 items-center justify-center rounded-md border",
+        on
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-input bg-background",
+      )}
+    >
+      {on ? <Check className="size-4" /> : null}
+    </span>
+  );
+}
+
 export function HomeView() {
   const overlay = useOverlay();
   const portfolio = usePortfolio();
@@ -325,6 +514,7 @@ export function HomeView() {
     const saved = parseHoldingSort(window.localStorage.getItem(HOLDING_SORT_KEY));
     setHoldingSort(saved.id);
     setSortDir(saved.dir);
+    setSelectedIds(parseSelectedIds(window.localStorage.getItem(SELECTED_ACCOUNTS_KEY)));
   }, []);
 
   const {
@@ -342,7 +532,11 @@ export function HomeView() {
     () => [...accounts].sort((a, b) => a.label.localeCompare(b.label, "ko")),
     [accounts],
   );
-  const activeIds = selectedIds ?? sortedAccounts.map((item) => item.id);
+  const knownIds = new Set(sortedAccounts.map((item) => item.id));
+  const activeIds =
+    selectedIds == null
+      ? sortedAccounts.map((item) => item.id)
+      : selectedIds.filter((id) => knownIds.has(id));
   const selected = new Set(activeIds);
   const allSelected =
     accounts.length > 0 && accounts.every((item) => selected.has(item.id));
@@ -440,39 +634,38 @@ export function HomeView() {
   function toggleAllAccounts() {
     if (allSelected) {
       setSelectedIds([]);
+      persistSelectedIds([]);
     } else {
-      setSelectedIds(sortedAccounts.map((item) => item.id));
+      setSelectedIds(null);
+      persistSelectedIds(null);
     }
   }
 
   function toggleAccount(id: string) {
     const current = selectedIds ?? sortedAccounts.map((row) => row.id);
-    setSelectedIds(
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id],
-    );
+    const next = current.includes(id)
+      ? current.filter((item) => item !== id)
+      : [...current, id];
+    const stored = next.length === sortedAccounts.length ? null : next;
+    setSelectedIds(stored);
+    persistSelectedIds(stored);
   }
 
   return (
     <AppShell
       dock={
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pt-2 shadow-[0_-8px_24px_-12px_rgb(0_0_0/0.15)] backdrop-blur-md sm:hidden pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-          <AccountChipBar
-            className="mx-auto max-w-6xl px-4"
-            accounts={sortedAccounts}
-            selected={selected}
-            allSelected={allSelected}
-            plusFirst
-            scroll
-            onToggleAll={toggleAllAccounts}
-            onToggle={toggleAccount}
-            onAdd={() => overlay.open({ m: "account-new" })}
-          />
-        </div>
+        <AccountSheetDock
+          accounts={sortedAccounts}
+          selected={selected}
+          selectedAccounts={selectedAccounts}
+          allSelected={allSelected}
+          onToggleAll={toggleAllAccounts}
+          onToggle={toggleAccount}
+          onAdd={() => overlay.open({ m: "account-new" })}
+        />
       }
     >
-      <div className="flex flex-col gap-5 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:gap-6 sm:pb-0">
+      <div className="flex flex-col gap-5 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:gap-6 sm:pb-0">
         <AccountChipBar
           className="hidden sm:flex"
           accounts={sortedAccounts}
