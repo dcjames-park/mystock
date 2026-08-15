@@ -10,6 +10,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   AppShell,
@@ -404,7 +405,19 @@ function AccountSheetDock({
             <div className="flex justify-center pt-2">
               <span className="h-1 w-10 rounded-full bg-muted-foreground/30" />
             </div>
-            <p className="px-4 pb-2 pt-3 text-base font-medium">계좌 선택</p>
+            <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-3">
+              <p className="text-base font-medium">계좌 선택</p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                onClick={() => setOpen(false)}
+              >
+                <X data-icon="inline-start" />
+                닫기
+              </Button>
+            </div>
             <div className="max-h-[50dvh] overflow-y-auto px-2 pb-1">
               {accounts.length > 0 ? (
                 <button
@@ -809,11 +822,12 @@ export function HomeView() {
                     labels={trend.map((item) => item.label)}
                     dates={trend.map((item) => item.date)}
                     values={trend.map((item) => item.value)}
+                    rates={trend.map((item) => item.rate)}
                     buyEvents={buyEvents}
                   />
                 </ChartSurface>
                 <p className="text-xs text-muted-foreground">
-                  보유 수량 × 과거 종가 · 막대는 매수일 원화 금액 · 단위 만원
+                  보유 수량 × 과거 종가 · 점선은 수익률 · 막대는 매수일 원화 금액 · 단위 만원
                 </p>
               </CardContent>
             ) : null}
@@ -850,7 +864,7 @@ export function HomeView() {
             </p>
           ) : null}
           {grouped.map((group) => {
-            const open = Boolean(expanded[group.id]);
+            const open = expanded[group.id] !== false;
             return (
             <div key={group.id}>
               <div
@@ -858,7 +872,7 @@ export function HomeView() {
                 onClick={() =>
                   setExpanded((prev) => ({
                     ...prev,
-                    [group.id]: !prev[group.id],
+                    [group.id]: prev[group.id] === false,
                   }))
                 }
               >

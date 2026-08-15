@@ -102,6 +102,7 @@ export type PeriodPoint = {
   date: string;
   value: number;
   buy: number;
+  rate: number;
 };
 
 export type PricePoint = {

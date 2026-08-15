@@ -9,17 +9,19 @@ export function ComboChart({
   labels,
   dates,
   values,
+  rates,
   buyEvents,
 }: {
   labels: string[];
   dates: string[];
   values: number[];
+  rates?: number[];
   buyEvents: { date: string; amount: number }[];
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(360);
   const height = 172;
-  const pad = { l: 32, r: 28, t: 10, b: 22 };
+  const pad = { l: 32, r: rates?.length ? 36 : 28, t: 10, b: 22 };
   const innerW = Math.max(width - pad.l - pad.r, 1);
   const innerH = height - pad.t - pad.b;
   const count = Math.max(values.length, 1);
@@ -42,6 +44,18 @@ export function ComboChart({
   const xAt = (i: number) => (dates[i] ? xAtDate(dates[i]) : xAtIndex(i));
   const yValue = (v: number) =>
     pad.t + innerH - ((v - vMin) / Math.max(vMax - vMin, 1)) * innerH;
+  const rateValues = rates && rates.length === values.length ? rates : [];
+  const rMin = rateValues.length > 0 ? Math.min(...rateValues, 0) : 0;
+  const rMax = rateValues.length > 0 ? Math.max(...rateValues, 0) : 1;
+  const yRate = (v: number) =>
+    pad.t + innerH - ((v - rMin) / Math.max(rMax - rMin, 1)) * innerH;
+  const rTicks = [rMin, (rMin + rMax) / 2, rMax];
+  const rateLine = rateValues
+    .map(
+      (v, i) =>
+        `${i === 0 ? "M" : "L"}${xAt(i).toFixed(1)},${yRate(v).toFixed(1)}`,
+    )
+    .join(" ");
   const buyBars = (() => {
     const merged = new Map<string, number>();
     for (const event of buyEvents) {
@@ -119,7 +133,7 @@ export function ComboChart({
         className="block h-[172px] w-full"
         preserveAspectRatio="none"
         role="img"
-        aria-label="평가 금액 추이와 매수 시점 금액"
+        aria-label="평가 금액·수익률 추이와 매수 시점 금액"
       >
         {vTicks.map((tick) => (
           <line
@@ -146,6 +160,15 @@ export function ComboChart({
         ))}
         <path d={area} fill="var(--primary)" fillOpacity={0.12} />
         <path d={line} fill="none" stroke="var(--primary)" strokeWidth={2} />
+        {rateLine ? (
+          <path
+            d={rateLine}
+            fill="none"
+            stroke="var(--chart-3)"
+            strokeWidth={2}
+            strokeDasharray="4 3"
+          />
+        ) : null}
         {values.map((v, i) => (
           <circle
             key={`p-${dates[i] ?? labels[i]}-${i}`}
@@ -167,18 +190,31 @@ export function ComboChart({
             {Math.round(tick)}
           </text>
         ))}
-        {bTicks.map((tick) => (
-          <text
-            key={`br-${tick}`}
-            x={width - pad.r + 4}
-            y={yBuy(tick) + 3}
-            textAnchor="start"
-            fill="var(--muted-foreground)"
-            fontSize={9}
-          >
-            {Math.round(tick)}
-          </text>
-        ))}
+        {rateValues.length > 0
+          ? rTicks.map((tick) => (
+              <text
+                key={`rr-${tick}`}
+                x={width - pad.r + 4}
+                y={yRate(tick) + 3}
+                textAnchor="start"
+                fill="var(--muted-foreground)"
+                fontSize={9}
+              >
+                {`${tick > 0 ? "+" : ""}${tick.toFixed(0)}%`}
+              </text>
+            ))
+          : bTicks.map((tick) => (
+              <text
+                key={`br-${tick}`}
+                x={width - pad.r + 4}
+                y={yBuy(tick) + 3}
+                textAnchor="start"
+                fill="var(--muted-foreground)"
+                fontSize={9}
+              >
+                {Math.round(tick)}
+              </text>
+            ))}
         {labels.map((label, i) => (
           <text
             key={`x-${label}-${i}`}
@@ -192,14 +228,20 @@ export function ComboChart({
           </text>
         ))}
       </svg>
-      <div className="flex items-center gap-3.5 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className="h-0.5 w-3 bg-primary" />
           평가 금액 (좌, 만)
         </span>
+        {rateValues.length > 0 ? (
+          <span className="flex items-center gap-1.5">
+            <span className="h-px w-3 border-t-2 border-dashed border-[var(--chart-3)]" />
+            수익률 (우, %)
+          </span>
+        ) : null}
         <span className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-sm bg-muted-foreground/30" />
-          매수 금액 (우, 만)
+          매수 금액{rateValues.length > 0 ? "" : " (우, 만)"}
         </span>
       </div>
     </div>

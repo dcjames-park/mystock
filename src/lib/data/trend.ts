@@ -67,12 +67,16 @@ export function buildTrend({
       const price = quotes[item.ticker] ?? item.buyPrice;
       return sum + toKrwAmount(price * item.qty, item.currency, usdKrw);
     }, 0);
+    const buy = relevant.reduce((sum, item) => {
+      return sum + toKrwAmount(item.buyPrice * item.qty, item.currency, usdKrw);
+    }, 0);
     return [
       {
         label: formatLabel(today, period),
         date: today,
         value: value / 10000,
         buy: 0,
+        rate: buy === 0 ? 0 : ((value - buy) / buy) * 100,
       },
     ];
   }
@@ -95,6 +99,7 @@ export function buildTrend({
     }
 
     let value = 0;
+    let cost = 0;
     for (const item of relevant) {
       const qty = qtyOnDate(item, date);
       if (qty <= 0) {
@@ -103,6 +108,14 @@ export function buildTrend({
       const price =
         lastClose[item.ticker] ?? quotes[item.ticker] ?? item.buyPrice;
       value += toKrwAmount(price * qty, item.currency, usdKrw);
+      const lots = (item.lots ?? []).filter(
+        (lot) => lot.boughtAt.slice(0, 10) <= date,
+      );
+      const lotCost = lots.reduce(
+        (sum, lot) => sum + lot.buyPrice * lot.qty,
+        0,
+      );
+      cost += toKrwAmount(lotCost, item.currency, usdKrw);
     }
 
     daily.push({
@@ -110,6 +123,7 @@ export function buildTrend({
       date,
       value: value / 10000,
       buy: 0,
+      rate: cost === 0 ? 0 : ((value - cost) / cost) * 100,
     });
   }
 
