@@ -4,12 +4,14 @@ import { useEffect, useRef, useState } from "react";
 
 export function ComboChart({
   labels,
+  dates,
   values,
-  buys,
+  buyEvents,
 }: {
   labels: string[];
+  dates: string[];
   values: number[];
-  buys: number[];
+  buyEvents: { date: string; amount: number }[];
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(360);
@@ -17,16 +19,71 @@ export function ComboChart({
   const pad = { l: 32, r: 28, t: 10, b: 22 };
   const innerW = Math.max(width - pad.l - pad.r, 1);
   const innerH = height - pad.t - pad.b;
-  const count = Math.max(labels.length, 1);
+  const count = Math.max(values.length, 1);
   const vMin = Math.min(...values, 0) * 0.94;
   const vMax = Math.max(...values, 1) * 1.03;
-  const bMax = Math.max(Math.max(...buys, 0), 1) * 1.2;
-  const xAt = (i: number) =>
+  const start = dates[0] ? new Date(dates[0]).getTime() : 0;
+  const end = dates[dates.length - 1]
+    ? new Date(dates[dates.length - 1]).getTime()
+    : start;
+  const xAtIndex = (i: number) =>
     pad.l + (count <= 1 ? innerW / 2 : (i / (count - 1)) * innerW);
+  const xAtDate = (date: string) => {
+    const time = new Date(date).getTime();
+    if (!Number.isFinite(time) || end === start) {
+      return pad.l + innerW / 2;
+    }
+    const ratio = Math.min(1, Math.max(0, (time - start) / (end - start)));
+    return pad.l + ratio * innerW;
+  };
+  const xAt = (i: number) => (dates[i] ? xAtDate(dates[i]) : xAtIndex(i));
   const yValue = (v: number) =>
     pad.t + innerH - ((v - vMin) / Math.max(vMax - vMin, 1)) * innerH;
+  const buyBars = (() => {
+    const merged = new Map<string, number>();
+    for (const event of buyEvents) {
+      if (event.amount <= 0) {
+        continue;
+      }
+      merged.set(event.date, (merged.get(event.date) ?? 0) + event.amount);
+    }
+    const items = [...merged.entries()]
+      .map(([date, amount]) => ({ date, amount, x: xAtDate(date) }))
+      .sort((a, b) => a.x - b.x);
+    let minDist = Number.POSITIVE_INFINITY;
+    for (let i = 1; i < items.length; i += 1) {
+      minDist = Math.min(minDist, items[i].x - items[i - 1].x);
+    }
+    const gap = 3;
+    const maxBarW = 14;
+    const barW = Math.min(
+      maxBarW,
+      Math.max(4, Number.isFinite(minDist) ? minDist - gap : maxBarW),
+    );
+    const minLeft = pad.l + barW / 2;
+    const maxRight = width - pad.r - barW / 2;
+    for (let i = 1; i < items.length; i += 1) {
+      const next = items[i - 1].x + barW + gap;
+      if (items[i].x < next) {
+        items[i] = { ...items[i], x: next };
+      }
+    }
+    if (items.length > 0 && items[items.length - 1].x > maxRight) {
+      let shift = items[items.length - 1].x - maxRight;
+      for (const item of items) {
+        item.x -= shift;
+      }
+      if (items[0].x < minLeft) {
+        shift = minLeft - items[0].x;
+        for (const item of items) {
+          item.x += shift;
+        }
+      }
+    }
+    return { items, barW };
+  })();
+  const bMax = Math.max(Math.max(...buyBars.items.map((item) => item.amount), 0), 1) * 1.2;
   const yBuy = (v: number) => pad.t + innerH - (v / bMax) * innerH;
-  const barW = Math.min(16, (innerW / count) * 0.32);
   const line = values
     .map(
       (v, i) =>
@@ -72,24 +129,23 @@ export function ComboChart({
             strokeWidth={1}
           />
         ))}
-        {buys.map((buy, i) =>
-          buy <= 0 ? null : (
-            <rect
-              key={`b-${labels[i]}-${i}`}
-              x={xAt(i) - barW / 2}
-              y={yBuy(buy)}
-              width={barW}
-              height={pad.t + innerH - yBuy(buy)}
-              fill="var(--chart-2)"
-              rx={2}
-            />
-          ),
-        )}
+        {buyBars.items.map((event) => (
+          <rect
+            key={`b-${event.date}`}
+            x={event.x - buyBars.barW / 2}
+            y={yBuy(event.amount)}
+            width={buyBars.barW}
+            height={Math.max(pad.t + innerH - yBuy(event.amount), 2)}
+            fill="var(--muted-foreground)"
+            fillOpacity={0.28}
+            rx={2}
+          />
+        ))}
         <path d={area} fill="var(--primary)" fillOpacity={0.12} />
         <path d={line} fill="none" stroke="var(--primary)" strokeWidth={2} />
         {values.map((v, i) => (
           <circle
-            key={`p-${labels[i]}-${i}`}
+            key={`p-${dates[i] ?? labels[i]}-${i}`}
             cx={xAt(i)}
             cy={yValue(v)}
             r={2.5}
@@ -139,7 +195,7 @@ export function ComboChart({
           평가 금액 (좌, 만)
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2 w-2 bg-chart-2" />
+          <span className="h-2 w-2 rounded-sm bg-muted-foreground/30" />
           매수 금액 (우, 만)
         </span>
       </div>

@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AppShell,
   Field,
   ScreenHeader,
   ScreenSkeleton,
 } from "@/components/portfolio/app-shell";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,14 +19,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { AmountInput } from "@/components/portfolio/amount-input";
 import { searchHoldings, usePortfolio } from "@/lib/data/use-portfolio";
 import { localDateStamp, toBoughtAt } from "@/lib/data/trend";
+import { fetchNaverHoldingName, isKoreanName } from "@/lib/market/naver-name";
 import type { SearchHit } from "@/lib/data/types";
 
 export function AddHoldingView() {
   const router = useRouter();
-  const { ready, accounts, addHolding } = usePortfolio();
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  const searchParams = useSearchParams();
+  const presetAccountId = searchParams.get("accountId") ?? "";
+  const { ready, accounts, holdings, addHolding } = usePortfolio();
+  const [accountId, setAccountId] = useState(presetAccountId || accounts[0]?.id || "");
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -36,11 +40,27 @@ export function AddHoldingView() {
   const [boughtOn, setBoughtOn] = useState(localDateStamp);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [namePending, setNamePending] = useState(false);
+  const nameResolveRef = useRef<Promise<string> | null>(null);
+  const selectSeq = useRef(0);
 
   const currentAccountId =
     accounts.some((item) => item.id === accountId)
       ? accountId
-      : (accounts[0]?.id ?? "");
+      : (accounts.some((item) => item.id === presetAccountId)
+        ? presetAccountId
+        : (accounts[0]?.id ?? ""));
+  const currentAccount = accounts.find((item) => item.id === currentAccountId);
+  const heldInAccount = holdings.filter((item) => item.accountId === currentAccountId);
+  const existingHolding = selected
+    ? heldInAccount.find((item) => item.ticker === selected.ticker)
+    : null;
+
+  useEffect(() => {
+    if (presetAccountId && accounts.some((item) => item.id === presetAccountId)) {
+      setAccountId(presetAccountId);
+    }
+  }, [accounts, presetAccountId]);
 
   async function handleSearch() {
     setError(null);
@@ -50,6 +70,33 @@ export function AddHoldingView() {
     if (next.length === 0) {
       setError("검색 결과가 없습니다. 종목명이나 티커를 확인해 주세요.");
     }
+  }
+
+  function handleSelect(item: SearchHit) {
+    const seq = ++selectSeq.current;
+    setSelected(item);
+    setQuery(item.name);
+    setSearchOpen(false);
+    if (isKoreanName(item.name)) {
+      setNamePending(false);
+      nameResolveRef.current = Promise.resolve(item.name);
+      return;
+    }
+    setNamePending(true);
+    const resolve = fetchNaverHoldingName(item.ticker, item.market, item.kind)
+      .then((naverName) => naverName ?? item.name)
+      .catch(() => item.name)
+      .then((name) => {
+        if (selectSeq.current === seq) {
+          setSelected((prev) =>
+            prev && prev.ticker === item.ticker ? { ...prev, name } : prev,
+          );
+          setQuery(name);
+          setNamePending(false);
+        }
+        return name;
+      });
+    nameResolveRef.current = resolve;
   }
 
   async function handleSave() {
@@ -62,10 +109,15 @@ export function AddHoldingView() {
       setError("찾기에서 종목을 선택해 주세요.");
       return;
     }
+    const alreadyHeld = heldInAccount.find((item) => item.ticker === selected.ticker);
+    if (alreadyHeld) {
+      setError("이미 보유 중인 종목입니다. 종목 상세에서 매수를 추가해 주세요.");
+      return;
+    }
     const buy = Number(buyPrice);
     const count = Number(qty);
     if (!Number.isFinite(buy) || buy <= 0 || !Number.isFinite(count) || count <= 0) {
-      setError("매입가와 수량을 확인해 주세요.");
+      setError("매수가와 수량을 확인해 주세요.");
       return;
     }
     if (!boughtOn) {
@@ -74,9 +126,12 @@ export function AddHoldingView() {
     }
     setPending(true);
     try {
-      await addHolding({
+      const name = nameResolveRef.current
+        ? await nameResolveRef.current
+        : selected.name;
+      const holding = await addHolding({
         accountId: currentAccountId,
-        name: selected.name,
+        name,
         ticker: selected.ticker,
         market: selected.market,
         kind: selected.kind,
@@ -85,7 +140,7 @@ export function AddHoldingView() {
         currency: selected.market === "kr" ? "KRW" : "USD",
         boughtAt: toBoughtAt(boughtOn),
       });
-      router.push("/");
+      router.push(`/holdings/${holding.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "저장에 실패했습니다.");
       setPending(false);
@@ -98,7 +153,11 @@ export function AddHoldingView() {
 
   return (
     <AppShell layout="form">
-      <ScreenHeader title="종목 추가" onClose={() => router.push("/")} />
+      <ScreenHeader
+        title="종목 추가"
+        onClose={() => router.push("/")}
+        closeVariant="secondary"
+      />
       <div className="flex flex-col gap-4">
         <Field label="계좌">
           {accounts.length === 0 ? (
@@ -110,6 +169,8 @@ export function AddHoldingView() {
             >
               계좌가 없습니다. 먼저 추가하세요.
             </Button>
+          ) : presetAccountId && currentAccount ? (
+            <Input value={currentAccount.label} disabled />
           ) : (
             <Select value={currentAccountId} onValueChange={setAccountId}>
               <SelectTrigger className="w-full">
@@ -137,15 +198,17 @@ export function AddHoldingView() {
                   void handleSearch();
                 }
               }}
-              placeholder="영어로 입력하세요"
+              placeholder="한글 종목명 또는 티커"
               className="min-w-0 flex-1"
             />
-            <Button type="button" variant="outline" onClick={() => void handleSearch()}>
+            <Button type="button" onClick={() => void handleSearch()}>
               찾기
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            예: Samsung, AAPL, QQQ · 대소문자·공백은 구분하지 않습니다.
+            {namePending
+              ? "네이버 한글 종목명을 확인하는 중..."
+              : "한글 이름이나 티커로 검색하세요. 중간 글자만 넣어도 됩니다."}
           </p>
         </Field>
 
@@ -158,32 +221,43 @@ export function AddHoldingView() {
                 닫기
               </Button>
             </div>
-            {hits.map((item) => (
-              <div key={item.ticker}>
-                <div className="flex items-center py-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{item.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {item.ticker} · {item.market === "kr" ? "국내" : "해외"} ·{" "}
-                      {item.kind === "etf" ? "ETF" : "주식"}
-                    </p>
+            {hits.map((item) => {
+              const held = heldInAccount.find((row) => row.ticker === item.ticker);
+              return (
+                <div key={item.ticker}>
+                  <div className="flex items-center py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.ticker} · {item.market === "kr" ? "국내" : "해외"} ·{" "}
+                        {item.kind === "etf" ? "ETF" : "주식"}
+                        {held ? " · 보유 중" : null}
+                      </p>
+                    </div>
+                    {held ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => router.push(`/holdings/${held.id}/buy`)}
+                      >
+                        매수 추가
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSelect(item)}
+                      >
+                        선택
+                      </Button>
+                    )}
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setSelected(item);
-                      setQuery(item.name);
-                      setSearchOpen(false);
-                    }}
-                  >
-                    선택
-                  </Button>
+                  <Separator />
                 </div>
-                <Separator />
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : null}
 
@@ -191,54 +265,65 @@ export function AddHoldingView() {
           <Input value={selected?.ticker ?? ""} placeholder="찾기에서 선택" disabled />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field
-            label={
-              selected
-                ? `매입가 (${selected.market === "kr" ? "원" : "달러"})`
-                : "매입가"
-            }
-          >
-            <div className="relative">
-              <Input
-                type="number"
-                value={buyPrice}
-                onChange={(event) => setBuyPrice(event.target.value)}
-                placeholder={selected?.market === "us" ? "180" : "72000"}
-                className="pr-12"
-              />
-              <span className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-xs text-muted-foreground">
-                {selected?.market === "us" ? "달러" : "원"}
-              </span>
+        {existingHolding ? (
+          <>
+            <Alert>
+              <AlertTitle>이미 보유 중인 종목입니다</AlertTitle>
+              <AlertDescription>
+                {currentAccount?.label ?? "이 계좌"}에 등록된 종목입니다. 여기서는 새
+                종목만 추가할 수 있습니다. 추가 매수는 종목 상세의 매수 이력에서
+                등록하세요.
+              </AlertDescription>
+            </Alert>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.push(`/holdings/${existingHolding.id}/buy`)}
+            >
+              종목 상세에서 매수 추가
+            </Button>
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <Field
+                label={
+                  selected
+                    ? `매수가 (${selected.market === "kr" ? "원" : "달러"})`
+                    : "매수가"
+                }
+              >
+                <AmountInput
+                  value={buyPrice}
+                  onChange={setBuyPrice}
+                  maxFraction={selected?.market === "us" ? 2 : 0}
+                  suffix={selected?.market === "us" ? "달러" : "원"}
+                />
+              </Field>
+              <Field label="수량">
+                <AmountInput value={qty} onChange={setQty} maxFraction={4} suffix="주" />
+              </Field>
             </div>
-          </Field>
-          <Field label="수량">
-            <Input
-              type="number"
-              value={qty}
-              onChange={(event) => setQty(event.target.value)}
-              placeholder="50"
-            />
-          </Field>
-        </div>
-        <Field label="매수일">
-          <Input
-            type="date"
-            value={boughtOn}
-            max={localDateStamp()}
-            onChange={(event) => setBoughtOn(event.target.value)}
-          />
-        </Field>
+            <Field label="매수일">
+              <Input
+                type="date"
+                value={boughtOn}
+                max={localDateStamp()}
+                onChange={(event) => setBoughtOn(event.target.value)}
+              />
+            </Field>
 
-        {error ? (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        ) : null}
+            {error ? (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
 
-        <Button type="button" onClick={() => void handleSave()} disabled={pending}>
-          {pending ? "저장 중..." : "저장"}
-        </Button>
+            <Button type="button" onClick={() => void handleSave()} disabled={pending}>
+              {pending ? "저장 중..." : "저장"}
+            </Button>
+          </>
+        )}
       </div>
     </AppShell>
   );

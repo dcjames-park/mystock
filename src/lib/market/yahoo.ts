@@ -1,4 +1,4 @@
-import type { Period, PricePoint, SearchHit } from "@/lib/data/types";
+import type { Period, PricePoint, QuoteDetail, SearchHit } from "@/lib/data/types";
 
 const YAHOO_HEADERS = {
   "User-Agent":
@@ -121,10 +121,124 @@ export async function quoteUsdKrwYahoo() {
   };
 }
 
-export async function quoteManyYahoo(tickers: string[]) {
-  const unique = [...new Set(tickers.filter(Boolean))];
+const SPARK_BATCH = 25;
+
+function lastFiniteNumber(values: unknown): number | null {
+  if (!Array.isArray(values)) {
+    return null;
+  }
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    const price = Number(values[i]);
+    if (Number.isFinite(price)) {
+      return price;
+    }
+  }
+  return null;
+}
+
+function priceFromSpark(item: unknown): number | null {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const row = item as {
+    close?: unknown;
+    response?: Array<{
+      meta?: { regularMarketPrice?: unknown };
+      indicators?: { quote?: Array<{ close?: unknown }> };
+    }>;
+  };
+  const fromClose = lastFiniteNumber(row.close);
+  if (fromClose != null) {
+    return fromClose;
+  }
+  const fromMeta = Number(row.response?.[0]?.meta?.regularMarketPrice);
+  if (Number.isFinite(fromMeta)) {
+    return fromMeta;
+  }
+  return lastFiniteNumber(row.response?.[0]?.indicators?.quote?.[0]?.close);
+}
+
+function sparkRowByTicker(data: unknown, ticker: string): unknown {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+  const record = data as Record<string, unknown>;
+  if (record[ticker]) {
+    return record[ticker];
+  }
+  const rows = (record.spark as { result?: unknown[] } | undefined)?.result;
+  if (!Array.isArray(rows)) {
+    return null;
+  }
+  return (
+    rows.find((item) => {
+      if (!item || typeof item !== "object") {
+        return false;
+      }
+      return String((item as { symbol?: unknown }).symbol ?? "") === ticker;
+    }) ?? null
+  );
+}
+
+function sparkAsOf(item: unknown) {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const time = lastFiniteNumber((item as { timestamp?: unknown }).timestamp);
+  return time == null ? null : new Date(time * 1000).toISOString();
+}
+
+function seriesFromSpark(item: unknown): PricePoint[] {
+  if (!item || typeof item !== "object") {
+    return [];
+  }
+  const timestamps = (item as { timestamp?: unknown }).timestamp;
+  const closes = (item as { close?: unknown }).close;
+  if (!Array.isArray(timestamps) || !Array.isArray(closes)) {
+    return [];
+  }
+  const series: PricePoint[] = [];
+  for (let i = 0; i < timestamps.length; i += 1) {
+    const close = Number(closes[i]);
+    const time = Number(timestamps[i]);
+    if (!Number.isFinite(close) || !Number.isFinite(time)) {
+      continue;
+    }
+    series.push({
+      date: new Date(time * 1000).toISOString().slice(0, 10),
+      close,
+    });
+  }
+  return series;
+}
+
+async function quoteManyYahooSpark(tickers: string[]) {
+  const batches: string[][] = [];
+  for (let i = 0; i < tickers.length; i += SPARK_BATCH) {
+    batches.push(tickers.slice(i, i + SPARK_BATCH));
+  }
+
+  const parts = await Promise.all(
+    batches.map(async (batch) => {
+      const url = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${encodeURIComponent(batch.join(","))}&range=1d&interval=1m`;
+      const data = await yahooJson(url);
+      const quotes: { ticker: string; lastPrice: number; asOf: string | null }[] = [];
+      for (const ticker of batch) {
+        const row = sparkRowByTicker(data, ticker);
+        const lastPrice = priceFromSpark(row);
+        if (lastPrice != null) {
+          quotes.push({ ticker, lastPrice, asOf: sparkAsOf(row) });
+        }
+      }
+      return quotes;
+    }),
+  );
+  return parts.flat();
+}
+
+async function quoteManyYahooEach(tickers: string[]) {
   const entries = await Promise.all(
-    unique.map(async (ticker) => {
+    tickers.map(async (ticker) => {
       try {
         const lastPrice = await quoteYahoo(ticker);
         return lastPrice == null ? null : { ticker, lastPrice };
@@ -138,11 +252,125 @@ export async function quoteManyYahoo(tickers: string[]) {
   );
 }
 
+export async function quoteManyYahoo(tickers: string[]) {
+  const snapshot = await quoteSnapshotYahoo(tickers);
+  return snapshot.quotes;
+}
+
+export async function quoteSnapshotYahoo(tickers: string[]) {
+  const unique = [...new Set(tickers.filter(Boolean))];
+  const symbols = unique.includes(USD_KRW_SYMBOL)
+    ? unique
+    : [...unique, USD_KRW_SYMBOL];
+  const byTicker = new Map<string, { ticker: string; lastPrice: number; asOf: string | null }>();
+  try {
+    for (const item of await quoteManyYahooSpark(symbols)) {
+      byTicker.set(item.ticker, item);
+    }
+  } catch {
+    byTicker.clear();
+  }
+
+  const missing = unique.filter((ticker) => !byTicker.has(ticker));
+  if (missing.length > 0) {
+    for (const item of await quoteManyYahooEach(missing)) {
+      byTicker.set(item.ticker, { ...item, asOf: null });
+    }
+  }
+
+  const fxRow = byTicker.get(USD_KRW_SYMBOL);
+  const fx =
+    fxRow && fxRow.lastPrice >= 800 && fxRow.lastPrice <= 2500
+      ? {
+          usdKrw: fxRow.lastPrice,
+          asOf: fxRow.asOf,
+          symbol: USD_KRW_SYMBOL,
+        }
+      : await quoteUsdKrwYahoo();
+
+  return {
+    quotes: unique
+      .map((ticker) => byTicker.get(ticker))
+      .filter(
+        (item): item is { ticker: string; lastPrice: number; asOf: string | null } =>
+          item != null && item.ticker !== USD_KRW_SYMBOL,
+      )
+      .map(({ ticker, lastPrice }) => ({ ticker, lastPrice })),
+    fx,
+  };
+}
+
+export async function chartManyYahoo(tickers: string[], period: Period) {
+  const unique = [...new Set(tickers.filter(Boolean))];
+  if (unique.length === 0) {
+    return [];
+  }
+  const spec = RANGE[period];
+  const found = new Map<
+    string,
+    { ticker: string; prices: number[]; series: PricePoint[]; lastPrice: number | null }
+  >();
+  try {
+    for (let i = 0; i < unique.length; i += SPARK_BATCH) {
+      const batch = unique.slice(i, i + SPARK_BATCH);
+      const url = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${encodeURIComponent(batch.join(","))}&range=${spec.range}&interval=${spec.interval}`;
+      const data = await yahooJson(url);
+      for (const ticker of batch) {
+        const series = seriesFromSpark(sparkRowByTicker(data, ticker));
+        if (series.length === 0) {
+          continue;
+        }
+        const prices = series.map((item) => item.close);
+        found.set(ticker, {
+          ticker,
+          prices: downsample(prices, 6),
+          series,
+          lastPrice: prices.at(-1) ?? null,
+        });
+      }
+    }
+  } catch {
+    found.clear();
+  }
+
+  const missing = unique.filter((ticker) => !found.has(ticker));
+  if (missing.length > 0) {
+    const extras = await Promise.all(
+      missing.map(async (ticker) => {
+        try {
+          const result = await chartYahoo(ticker, period);
+          return { ticker, ...result };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    for (const item of extras) {
+      if (item) {
+        found.set(item.ticker, item);
+      }
+    }
+  }
+  return unique
+    .map((ticker) => found.get(ticker))
+    .filter(
+      (
+        item,
+      ): item is {
+        ticker: string;
+        prices: number[];
+        series: PricePoint[];
+        lastPrice: number | null;
+      } => item != null,
+    );
+}
+
 const RANGE: Record<Period, { range: string; interval: string }> = {
   "1m": { range: "1mo", interval: "1d" },
   "6m": { range: "6mo", interval: "1wk" },
   "1y": { range: "1y", interval: "1wk" },
   "2y": { range: "2y", interval: "1wk" },
+  "5y": { range: "5y", interval: "1mo" },
 };
 
 function downsample(values: number[], count: number) {
@@ -160,8 +388,9 @@ function downsample(values: number[], count: number) {
 export async function chartYahoo(ticker: string, period: Period) {
   const spec = RANGE[period];
   const encoded = encodeURIComponent(ticker);
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?range=${spec.range}&interval=${spec.interval}`;
-  const data = await yahooJson(url);
+  const data = await yahooJson(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?range=${spec.range}&interval=${spec.interval}`,
+  );
   const result = data?.chart?.result?.[0];
   const timestamps: number[] = Array.isArray(result?.timestamp)
     ? result.timestamp
@@ -184,5 +413,102 @@ export async function chartYahoo(ticker: string, period: Period) {
     prices: downsample(prices, 6),
     series,
     lastPrice,
+  };
+}
+
+function rawNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (value && typeof value === "object" && "raw" in value) {
+    const raw = Number((value as { raw?: unknown }).raw);
+    return Number.isFinite(raw) ? raw : null;
+  }
+  const next = Number(value);
+  return Number.isFinite(next) ? next : null;
+}
+
+function rawText(value: unknown) {
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  if (value && typeof value === "object" && "fmt" in value) {
+    const fmt = (value as { fmt?: unknown }).fmt;
+    if (typeof fmt === "string" && fmt.trim()) {
+      return fmt;
+    }
+  }
+  return null;
+}
+
+export async function quoteDetailsYahoo(ticker: string): Promise<QuoteDetail> {
+  const encoded = encodeURIComponent(ticker);
+  const empty: QuoteDetail = {
+    ticker,
+    lastPrice: null,
+    previousClose: null,
+    dayHigh: null,
+    dayLow: null,
+    week52High: null,
+    week52Low: null,
+    volume: null,
+    averageVolume: null,
+    marketCap: null,
+    pe: null,
+    forwardPe: null,
+    eps: null,
+    dividendYield: null,
+    beta: null,
+    exchange: null,
+    quoteType: null,
+    currency: null,
+    shortName: null,
+    longName: null,
+  };
+
+  const chart = await yahooJson(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?range=1d&interval=1d`,
+  );
+  const meta = chart?.chart?.result?.[0]?.meta;
+  const price: Record<string, unknown> = {};
+  const detail: Record<string, unknown> = {};
+  const stats: Record<string, unknown> = {};
+
+  return {
+    ticker,
+    lastPrice:
+      rawNumber(price.regularMarketPrice) ?? rawNumber(meta?.regularMarketPrice),
+    previousClose:
+      rawNumber(price.regularMarketPreviousClose) ??
+      rawNumber(meta?.previousClose) ??
+      rawNumber(meta?.chartPreviousClose),
+    dayHigh:
+      rawNumber(price.regularMarketDayHigh) ??
+      rawNumber(detail.regularMarketDayHigh) ??
+      rawNumber(meta?.regularMarketDayHigh),
+    dayLow:
+      rawNumber(price.regularMarketDayLow) ??
+      rawNumber(detail.regularMarketDayLow) ??
+      rawNumber(meta?.regularMarketDayLow),
+    week52High:
+      rawNumber(detail.fiftyTwoWeekHigh) ?? rawNumber(meta?.fiftyTwoWeekHigh),
+    week52Low:
+      rawNumber(detail.fiftyTwoWeekLow) ?? rawNumber(meta?.fiftyTwoWeekLow),
+    volume:
+      rawNumber(price.regularMarketVolume) ??
+      rawNumber(detail.volume) ??
+      rawNumber(meta?.regularMarketVolume),
+    averageVolume: rawNumber(detail.averageVolume),
+    marketCap: rawNumber(price.marketCap) ?? rawNumber(detail.marketCap),
+    pe: rawNumber(detail.trailingPE) ?? rawNumber(stats.trailingPE),
+    forwardPe: rawNumber(stats.forwardPE) ?? rawNumber(detail.forwardPE),
+    eps: rawNumber(stats.trailingEps),
+    dividendYield: rawNumber(detail.dividendYield) ?? rawNumber(detail.yield),
+    beta: rawNumber(detail.beta) ?? rawNumber(stats.beta),
+    exchange: rawText(price.exchangeName) ?? rawText(meta?.exchangeName),
+    quoteType: rawText(price.quoteType) ?? rawText(meta?.instrumentType),
+    currency: rawText(price.currency) ?? rawText(meta?.currency),
+    shortName: rawText(price.shortName) ?? rawText(meta?.shortName),
+    longName: rawText(price.longName) ?? rawText(meta?.longName),
   };
 }

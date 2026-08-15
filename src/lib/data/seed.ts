@@ -12,6 +12,24 @@ export const SEED_ACCOUNTS: Account[] = [
   { id: "mirae", label: "미래에셋", color: "purple", createdAt: now },
 ];
 
+function lot(
+  holdingId: string,
+  id: string,
+  buyPrice: number,
+  qty: number,
+  boughtAt: string,
+) {
+  return {
+    id,
+    holdingId,
+    buyPrice,
+    qty,
+    boughtAt,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export const SEED_HOLDINGS: Holding[] = [
   {
     id: "005930",
@@ -20,10 +38,14 @@ export const SEED_HOLDINGS: Holding[] = [
     ticker: "005930.KS",
     market: "kr",
     kind: "stock",
-    buyPrice: 72000,
+    buyPrice: 74400,
     qty: 50,
     currency: "KRW",
     boughtAt: "2025-03-01T00:00:00.000Z",
+    lots: [
+      lot("005930", "005930-1", 72000, 30, "2025-03-01T00:00:00.000Z"),
+      lot("005930", "005930-2", 78000, 20, "2025-09-01T00:00:00.000Z"),
+    ],
     createdAt: now,
     updatedAt: now,
   },
@@ -38,6 +60,7 @@ export const SEED_HOLDINGS: Holding[] = [
     qty: 100,
     currency: "KRW",
     boughtAt: "2025-11-15T00:00:00.000Z",
+    lots: [lot("360750", "360750-1", 18200, 100, "2025-11-15T00:00:00.000Z")],
     createdAt: now,
     updatedAt: now,
   },
@@ -52,6 +75,7 @@ export const SEED_HOLDINGS: Holding[] = [
     qty: 20,
     currency: "USD",
     boughtAt: "2025-03-20T00:00:00.000Z",
+    lots: [lot("aapl", "aapl-1", 180, 20, "2025-03-20T00:00:00.000Z")],
     createdAt: now,
     updatedAt: now,
   },
@@ -66,6 +90,7 @@ export const SEED_HOLDINGS: Holding[] = [
     qty: 10,
     currency: "USD",
     boughtAt: "2026-07-25T00:00:00.000Z",
+    lots: [lot("qqq", "qqq-1", 420, 10, "2026-07-25T00:00:00.000Z")],
     createdAt: now,
     updatedAt: now,
   },
@@ -80,6 +105,7 @@ export const SEED_HOLDINGS: Holding[] = [
     qty: 30,
     currency: "USD",
     boughtAt: "2026-02-01T00:00:00.000Z",
+    lots: [lot("nvda", "nvda-1", 95, 30, "2026-02-01T00:00:00.000Z")],
     createdAt: now,
     updatedAt: now,
   },
@@ -94,6 +120,7 @@ export const SEED_HOLDINGS: Holding[] = [
     qty: 40,
     currency: "KRW",
     boughtAt: "2024-08-01T00:00:00.000Z",
+    lots: [lot("035720", "035720-1", 48000, 40, "2024-08-01T00:00:00.000Z")],
     createdAt: now,
     updatedAt: now,
   },

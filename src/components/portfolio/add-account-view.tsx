@@ -3,30 +3,39 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ACCOUNT_COLOR,
   AppShell,
   Field,
   ScreenHeader,
   ScreenSkeleton,
 } from "@/components/portfolio/app-shell";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePortfolio } from "@/lib/data/use-portfolio";
-import { ACCOUNT_SUGGESTIONS } from "@/lib/money";
+
+function sameAccountName(a: string, b: string) {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
 
 export function AddAccountView() {
   const router = useRouter();
-  const { ready, addAccount } = usePortfolio();
+  const { ready, accounts, addAccount } = usePortfolio();
   const [name, setName] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const label = name.trim();
+  const duplicate = accounts.find((item) => sameAccountName(item.label, label));
 
   async function handleSave() {
-    const label = name.trim();
     if (!label) {
       return;
     }
+    if (duplicate) {
+      setError("이미 등록된 계좌명입니다.");
+      return;
+    }
+    setError(null);
     setPending(true);
     try {
       await addAccount(label);
@@ -43,29 +52,32 @@ export function AddAccountView() {
 
   return (
     <AppShell layout="form">
-      <ScreenHeader title="계좌 추가" onClose={() => router.push("/")} />
-      <Field label="증권사">
+      <ScreenHeader
+        title="계좌 추가"
+        onClose={() => router.push("/")}
+        closeVariant="secondary"
+      />
+      <Field label="계좌명">
         <Input
           value={name}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => {
+            setName(event.target.value);
+            setError(null);
+          }}
           placeholder="삼성증권, 키움증권…"
         />
       </Field>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {ACCOUNT_SUGGESTIONS.map((item) => (
-          <Badge
-            key={item}
-            variant={name === item ? "default" : "outline"}
-            className="cursor-pointer"
-            onClick={() => setName(item)}
-          >
-            {item}
-          </Badge>
-        ))}
-      </div>
       <p className="mt-4 text-xs text-muted-foreground">
         추가한 계좌에 종목을 넣을 수 있습니다.
       </p>
+      {duplicate ? (
+        <Alert className="mt-3">
+          <AlertDescription>
+            {duplicate.label}은(는) 이미 등록된 계좌입니다. 다른 계좌명을 입력해
+            주세요.
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {error ? (
         <Alert variant="destructive" className="mt-3">
           <AlertDescription>{error}</AlertDescription>
@@ -75,10 +87,39 @@ export function AddAccountView() {
         type="button"
         className="mt-5 w-full"
         onClick={() => void handleSave()}
-        disabled={pending || !name.trim()}
+        disabled={pending || !label || Boolean(duplicate)}
       >
         {pending ? "추가 중..." : "추가"}
       </Button>
+      {accounts.length > 0 ? (
+        <div className="mt-8 space-y-2">
+          <p className="text-xs text-muted-foreground">등록된 계좌</p>
+          <div className="space-y-1.5">
+            {accounts.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5"
+                style={{
+                  background: `color-mix(in oklch, ${ACCOUNT_COLOR[item.color]} 16%, var(--background))`,
+                }}
+              >
+                <span
+                  className="size-2.5 shrink-0 rounded-full"
+                  style={{ background: ACCOUNT_COLOR[item.color] }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium tracking-wide text-muted-foreground">
+                    계좌
+                  </p>
+                  <p className="truncate font-heading text-base font-semibold">
+                    {item.label}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </AppShell>
   );
 }

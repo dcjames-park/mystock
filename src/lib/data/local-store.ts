@@ -1,5 +1,6 @@
+import { applyLotSummary, hydrateHoldings } from "@/lib/data/lots";
 import { buildSeedSnapshots, SEED_ACCOUNTS, SEED_HOLDINGS, SEED_QUOTES } from "@/lib/data/seed";
-import type { Account, Holding, ValuationSnapshot } from "@/lib/data/types";
+import type { Account, Holding, HoldingLot, ValuationSnapshot } from "@/lib/data/types";
 
 const KEYS = {
   accounts: "mystock.accounts",
@@ -78,7 +79,7 @@ export function saveAccounts(accounts: Account[]) {
 }
 
 export function listHoldings(): Holding[] {
-  return readJson<Holding[]>(KEYS.holdings, []);
+  return hydrateHoldings(readJson<Holding[]>(KEYS.holdings, []));
 }
 
 export function saveHoldings(holdings: Holding[]) {
@@ -137,15 +138,86 @@ export function deleteAccount(accountId: string) {
 }
 
 export function upsertHolding(holding: Holding) {
+  const nextHolding = applyLotSummary({
+    ...holding,
+    lots: holding.lots ?? [],
+  });
   const holdings = listHoldings();
-  const index = holdings.findIndex((item) => item.id === holding.id);
+  const index = holdings.findIndex((item) => item.id === nextHolding.id);
   if (index === -1) {
-    saveHoldings([...holdings, holding]);
-    return;
+    saveHoldings([...holdings, nextHolding]);
+    return nextHolding;
   }
   const next = [...holdings];
-  next[index] = holding;
+  next[index] = nextHolding;
   saveHoldings(next);
+  return nextHolding;
+}
+
+export function addLot(
+  holdingId: string,
+  input: { buyPrice: number; qty: number; boughtAt: string },
+) {
+  const current = listHoldings().find((item) => item.id === holdingId);
+  if (!current) {
+    return null;
+  }
+  const now = new Date().toISOString();
+  const lot: HoldingLot = {
+    id: crypto.randomUUID(),
+    holdingId,
+    buyPrice: input.buyPrice,
+    qty: input.qty,
+    boughtAt: input.boughtAt,
+    createdAt: now,
+    updatedAt: now,
+  };
+  return upsertHolding({
+    ...current,
+    lots: [...current.lots, lot],
+    updatedAt: now,
+  });
+}
+
+export function updateLot(
+  holdingId: string,
+  lotId: string,
+  input: { buyPrice: number; qty: number; boughtAt: string },
+) {
+  const current = listHoldings().find((item) => item.id === holdingId);
+  if (!current) {
+    return null;
+  }
+  const now = new Date().toISOString();
+  return upsertHolding({
+    ...current,
+    lots: current.lots.map((lot) =>
+      lot.id === lotId
+        ? { ...lot, ...input, updatedAt: now }
+        : lot,
+    ),
+    updatedAt: now,
+  });
+}
+
+export function deleteLot(holdingId: string, lotId: string) {
+  const current = listHoldings().find((item) => item.id === holdingId);
+  if (!current) {
+    return { holding: null, removedHolding: false };
+  }
+  const lots = current.lots.filter((lot) => lot.id !== lotId);
+  if (lots.length === 0) {
+    deleteHolding(holdingId);
+    return { holding: null, removedHolding: true };
+  }
+  return {
+    holding: upsertHolding({
+      ...current,
+      lots,
+      updatedAt: new Date().toISOString(),
+    }),
+    removedHolding: false,
+  };
 }
 
 export function deleteHolding(holdingId: string) {

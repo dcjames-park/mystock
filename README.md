@@ -51,7 +51,7 @@ Google Cloud Console의 OAuth 클라이언트에도 Supabase가 안내하는 Cal
 
 5. (운영 연동 시험 시) 테이블 만들기
 
-Supabase SQL Editor에서 `supabase/schema.sql` 내용을 실행합니다.
+Supabase SQL Editor에서 `supabase/schema.sql` 내용을 실행합니다. 이미 예전에 `schema.sql`을 실행한 프로젝트는 `supabase/migrate-holding-lots.sql`로 매수 이력 테이블을 만들고, `supabase/migrate-account-colors.sql`로 계좌 색 종류를 늘립니다.
 
 ## 운영 (Vercel)
 

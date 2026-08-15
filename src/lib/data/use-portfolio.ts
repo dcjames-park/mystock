@@ -1,20 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isLocalBackend, LOCAL_USER } from "@/lib/data/backend";
 import * as localStore from "@/lib/data/local-store";
 import * as supabaseStore from "@/lib/data/supabase-store";
-import { holdingToKrw, ACCOUNT_COLORS, FALLBACK_USD_KRW, USD_KRW_SOURCE, USD_KRW_SYMBOL } from "@/lib/money";
+import { applyLotSummary, hydrateHoldings } from "@/lib/data/lots";
+import { holdingToKrw, nextAccountColor, FALLBACK_USD_KRW, USD_KRW_SOURCE, USD_KRW_SYMBOL } from "@/lib/money";
 import { todayStamp } from "@/lib/data/trend";
 import type {
   Account,
-  AccountColor,
   FxQuote,
   Holding,
   PricePoint,
   SearchHit,
   ValuationSnapshot,
 } from "@/lib/data/types";
+
+const QUOTE_TTL_MS = 60 * 60_000;
 
 const FALLBACK_FX: FxQuote = {
   usdKrw: FALLBACK_USD_KRW,
@@ -73,7 +75,7 @@ export function usePortfolio() {
       const data = JSON.parse(raw) as Record<string, string | null>;
       return {
         accounts: JSON.parse(data.accounts || "[]") as Account[],
-        holdings: JSON.parse(data.holdings || "[]") as Holding[],
+        holdings: hydrateHoldings(JSON.parse(data.holdings || "[]") as Holding[]),
         snapshots: JSON.parse(data.snapshots || "[]") as ValuationSnapshot[],
         quoteCache: JSON.parse(data.quotes || "{}") as Record<string, number>,
       };
@@ -86,8 +88,12 @@ export function usePortfolio() {
   const holdings = local ? parsed.holdings : remoteHoldings;
   const snapshots = local ? parsed.snapshots : remoteSnapshots;
   const quotes = { ...parsed.quoteCache, ...liveQuotes };
-  const tickerKey = holdings.map((item) => item.ticker).join(",");
+  const tickerKey = [...new Set(holdings.map((item) => item.ticker).filter(Boolean))].join(",");
   const ready = local ? isClient : remoteReady;
+  const historiesRef = useRef(histories);
+  const inflightCharts = useRef(new Set<string>());
+  const lastQuoteFetch = useRef({ key: "", at: 0 });
+  historiesRef.current = histories;
 
   const reloadRemote = useCallback(async () => {
     if (local) {
@@ -169,27 +175,63 @@ export function usePortfolio() {
     [local],
   );
 
+  const applySnapshot = useCallback(
+    async (data: {
+      quotes: { ticker: string; lastPrice: number }[];
+      fx?: {
+        usdKrw?: number;
+        asOf?: string | null;
+        symbol?: string;
+        source?: string;
+      } | null;
+    }) => {
+      const next: Record<string, number> = {};
+      for (const item of data.quotes) {
+        next[item.ticker] = item.lastPrice;
+      }
+      if (Object.keys(next).length > 0) {
+        setLiveQuotes((prev) => ({ ...prev, ...next }));
+        if (local) {
+          localStore.saveQuoteCache({ ...parsed.quoteCache, ...next });
+        }
+      }
+      let usdKrw = fx.usdKrw;
+      if (data.fx && Number.isFinite(data.fx.usdKrw) && (data.fx.usdKrw ?? 0) > 0) {
+        const nextFx: FxQuote = {
+          usdKrw: data.fx.usdKrw as number,
+          asOf: data.fx.asOf ?? null,
+          symbol: data.fx.symbol ?? USD_KRW_SYMBOL,
+          source: data.fx.source ?? USD_KRW_SOURCE,
+          fallback: false,
+        };
+        usdKrw = nextFx.usdKrw;
+        setFx(nextFx);
+        localStore.saveFxCache(nextFx);
+      }
+      if (Object.keys(next).length > 0) {
+        await persistTodaySnapshots(
+          holdings,
+          { ...parsed.quoteCache, ...next },
+          accounts,
+          usdKrw,
+        );
+      }
+    },
+    [accounts, fx.usdKrw, holdings, local, parsed.quoteCache, persistTodaySnapshots],
+  );
+
   const refreshQuotes = useCallback(async () => {
-    if (!tickerKey) {
-      return;
-    }
     const response = await fetch(`/api/market/quotes?tickers=${encodeURIComponent(tickerKey)}`);
     if (!response.ok) {
       return;
     }
     const data = (await response.json()) as {
       quotes: { ticker: string; lastPrice: number }[];
+      fx?: FxQuote | null;
     };
-    const next: Record<string, number> = {};
-    for (const item of data.quotes) {
-      next[item.ticker] = item.lastPrice;
-    }
-    setLiveQuotes(next);
-    if (local) {
-      localStore.saveQuoteCache(next);
-    }
-    await persistTodaySnapshots(holdings, { ...parsed.quoteCache, ...next }, accounts, fx.usdKrw);
-  }, [accounts, fx.usdKrw, holdings, local, parsed.quoteCache, persistTodaySnapshots, tickerKey]);
+    lastQuoteFetch.current = { key: tickerKey, at: Date.now() };
+    await applySnapshot(data);
+  }, [applySnapshot, tickerKey]);
 
   useEffect(() => {
     if (!ready) {
@@ -199,39 +241,10 @@ export function usePortfolio() {
     if (cached) {
       setFx({ ...cached, fallback: false });
     }
-    let cancelled = false;
-    void fetch("/api/market/fx")
-      .then(async (response) => {
-        if (cancelled || !response.ok) {
-          return;
-        }
-        const data = (await response.json()) as {
-          usdKrw?: number;
-          asOf?: string | null;
-          symbol?: string;
-          source?: string;
-        };
-        if (cancelled || !Number.isFinite(data.usdKrw) || (data.usdKrw ?? 0) <= 0) {
-          return;
-        }
-        const next: FxQuote = {
-          usdKrw: data.usdKrw as number,
-          asOf: data.asOf ?? null,
-          symbol: data.symbol ?? USD_KRW_SYMBOL,
-          source: data.source ?? USD_KRW_SOURCE,
-          fallback: false,
-        };
-        setFx(next);
-        localStore.saveFxCache(next);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [ready]);
-
-  useEffect(() => {
-    if (!ready || !tickerKey) {
+    const fresh =
+      lastQuoteFetch.current.key === tickerKey &&
+      Date.now() - lastQuoteFetch.current.at < QUOTE_TTL_MS;
+    if (fresh) {
       return;
     }
     let cancelled = false;
@@ -242,36 +255,29 @@ export function usePortfolio() {
         }
         const data = (await response.json()) as {
           quotes: { ticker: string; lastPrice: number }[];
+          fx?: FxQuote | null;
         };
         if (cancelled) {
           return;
         }
-        const next: Record<string, number> = {};
-        for (const item of data.quotes) {
-          next[item.ticker] = item.lastPrice;
-        }
-        setLiveQuotes(next);
-        if (local) {
-          localStore.saveQuoteCache(next);
-        }
-        void persistTodaySnapshots(
-          holdings,
-          next,
-          accounts,
-          localStore.readFxCache()?.usdKrw ?? FALLBACK_USD_KRW,
-        );
+        lastQuoteFetch.current = { key: tickerKey, at: Date.now() };
+        await applySnapshot(data);
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-    // tickerKey is the actual trigger; holdings/accounts are read from this render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [local, persistTodaySnapshots, ready, tickerKey]);
+  }, [applySnapshot, ready, tickerKey]);
 
   const addAccount = useCallback(
     async (label: string) => {
-      const color = ACCOUNT_COLORS[accounts.length % ACCOUNT_COLORS.length] as AccountColor;
+      const exists = accounts.some(
+        (item) => item.label.trim().toLowerCase() === label.trim().toLowerCase(),
+      );
+      if (exists) {
+        throw new Error("이미 등록된 계좌명입니다.");
+      }
+      const color = nextAccountColor(accounts.map((item) => item.color));
       if (local) {
         const account: Account = {
           id: crypto.randomUUID(),
@@ -286,7 +292,7 @@ export function usePortfolio() {
       await reloadRemote();
       return account;
     },
-    [accounts.length, local, reloadRemote],
+    [accounts, local, reloadRemote],
   );
 
   const removeAccount = useCallback(
@@ -301,27 +307,92 @@ export function usePortfolio() {
     [local, reloadRemote],
   );
 
-  const addHolding = useCallback(
-    async (input: Omit<Holding, "id" | "createdAt" | "updatedAt">) => {
+  const addLot = useCallback(
+    async (
+      holdingId: string,
+      input: { buyPrice: number; qty: number; boughtAt: string },
+    ) => {
       if (local) {
-        const holding: Holding = {
-          ...input,
-          id: crypto.randomUUID(),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        localStore.upsertHolding(holding);
-        return holding;
+        return localStore.addLot(holdingId, input);
       }
-      const holding = await supabaseStore.insertHolding(input);
+      const holding = await supabaseStore.addLot(holdingId, input);
       await reloadRemote();
       return holding;
     },
     [local, reloadRemote],
   );
 
+  const updateLot = useCallback(
+    async (
+      holdingId: string,
+      lotId: string,
+      input: { buyPrice: number; qty: number; boughtAt: string },
+    ) => {
+      if (local) {
+        return localStore.updateLot(holdingId, lotId, input);
+      }
+      const holding = await supabaseStore.updateLot(holdingId, lotId, input);
+      await reloadRemote();
+      return holding;
+    },
+    [local, reloadRemote],
+  );
+
+  const removeLot = useCallback(
+    async (holdingId: string, lotId: string) => {
+      if (local) {
+        return localStore.deleteLot(holdingId, lotId);
+      }
+      const result = await supabaseStore.removeLot(holdingId, lotId);
+      await reloadRemote();
+      return result;
+    },
+    [local, reloadRemote],
+  );
+
+  const addHolding = useCallback(
+    async (input: Omit<Holding, "id" | "createdAt" | "updatedAt" | "lots">) => {
+      const existing = holdings.find(
+        (item) => item.accountId === input.accountId && item.ticker === input.ticker,
+      );
+      if (existing) {
+        throw new Error("이미 보유 중인 종목입니다. 종목 상세에서 매수를 추가해 주세요.");
+      }
+      if (local) {
+        const now = new Date().toISOString();
+        const id = crypto.randomUUID();
+        const holding = applyLotSummary({
+          ...input,
+          id,
+          lots: [
+            {
+              id: crypto.randomUUID(),
+              holdingId: id,
+              buyPrice: input.buyPrice,
+              qty: input.qty,
+              boughtAt: input.boughtAt,
+              createdAt: now,
+              updatedAt: now,
+            },
+          ],
+          createdAt: now,
+          updatedAt: now,
+        });
+        localStore.upsertHolding(holding);
+        return holding;
+      }
+      const holding = await supabaseStore.insertHolding({ ...input, lots: [] });
+      await reloadRemote();
+      return holding;
+    },
+    [holdings, local, reloadRemote],
+  );
+
   const updateHolding = useCallback(
-    async (id: string, input: { buyPrice: number; qty: number; boughtAt: string }) => {
+    async (
+      id: string,
+      input: { buyPrice?: number; qty?: number; boughtAt?: string; name?: string },
+    ) => {
       if (local) {
         const current = localStore.listHoldings().find((item) => item.id === id);
         if (!current) {
@@ -352,21 +423,56 @@ export function usePortfolio() {
     [local, reloadRemote],
   );
 
-  const loadChart = useCallback(async (ticker: string, period: string) => {
-    const key = `${ticker}:${period}`;
-    const response = await fetch(
-      `/api/market/chart?ticker=${encodeURIComponent(ticker)}&period=${period}`,
-    );
-    if (!response.ok) {
+  const loadCharts = useCallback(async (tickers: string[], period: string) => {
+    const unique = [...new Set(tickers.filter(Boolean))];
+    const missing = unique.filter((ticker) => {
+      const key = `${ticker}:${period}`;
+      return !historiesRef.current[key] && !inflightCharts.current.has(key);
+    });
+    if (missing.length === 0) {
       return;
     }
-    const data = (await response.json()) as {
-      prices: number[];
-      series?: PricePoint[];
-    };
-    setCharts((prev) => ({ ...prev, [key]: data.prices }));
-    setHistories((prev) => ({ ...prev, [key]: data.series ?? [] }));
+    for (const ticker of missing) {
+      inflightCharts.current.add(`${ticker}:${period}`);
+    }
+    try {
+      const response = await fetch(
+        `/api/market/charts?tickers=${encodeURIComponent(missing.join(","))}&period=${period}`,
+      );
+      if (!response.ok) {
+        return;
+      }
+      const data = (await response.json()) as {
+        charts?: Record<string, { prices?: number[]; series?: PricePoint[] }>;
+      };
+      const nextCharts: Record<string, number[]> = {};
+      const nextHistories: Record<string, PricePoint[]> = {};
+      for (const ticker of missing) {
+        const item = data.charts?.[ticker];
+        if (!item) {
+          continue;
+        }
+        const key = `${ticker}:${period}`;
+        nextCharts[key] = item.prices ?? [];
+        nextHistories[key] = item.series ?? [];
+      }
+      if (Object.keys(nextHistories).length > 0) {
+        setCharts((prev) => ({ ...prev, ...nextCharts }));
+        setHistories((prev) => ({ ...prev, ...nextHistories }));
+      }
+    } finally {
+      for (const ticker of missing) {
+        inflightCharts.current.delete(`${ticker}:${period}`);
+      }
+    }
   }, []);
+
+  const loadChart = useCallback(
+    async (ticker: string, period: string) => {
+      await loadCharts([ticker], period);
+    },
+    [loadCharts],
+  );
 
   return {
     ready,
@@ -382,10 +488,14 @@ export function usePortfolio() {
     addAccount,
     removeAccount,
     addHolding,
+    addLot,
+    updateLot,
+    removeLot,
     updateHolding,
     removeHolding,
     refreshQuotes,
     loadChart,
+    loadCharts,
   };
 }
 

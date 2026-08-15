@@ -43,6 +43,11 @@
   --account-blue: oklch(0.546 0.215 264.376);
   --account-cyan: oklch(0.62 0.12 195);
   --account-purple: oklch(0.55 0.18 292);
+  --account-orange: oklch(0.65 0.16 55);
+  --account-rose: oklch(0.62 0.18 18);
+  --account-green: oklch(0.62 0.16 145);
+  --account-amber: oklch(0.68 0.15 85);
+  --account-pink: oklch(0.62 0.16 340);
 }
 
 .dark {
@@ -83,6 +88,11 @@
   --account-blue: oklch(0.62 0.19 264);
   --account-cyan: oklch(0.7 0.12 195);
   --account-purple: oklch(0.65 0.16 292);
+  --account-orange: oklch(0.72 0.16 55);
+  --account-rose: oklch(0.7 0.17 18);
+  --account-green: oklch(0.72 0.16 145);
+  --account-amber: oklch(0.75 0.14 85);
+  --account-pink: oklch(0.72 0.15 340);
 }
 
 @theme inline {

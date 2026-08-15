@@ -10,11 +10,13 @@ export type {
   AccountColor,
   Currency,
   Holding,
+  HoldingLot,
   HoldingKind,
   Market,
   Period,
   PeriodPoint,
   Quote,
+  QuoteDetail,
   SearchHit,
   ValuationSnapshot,
 } from "./types";

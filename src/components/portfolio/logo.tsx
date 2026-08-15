@@ -55,13 +55,15 @@ export function FolioLogo({
   markSize = 28,
   className,
   wordmarkClassName,
+  onClick,
 }: {
   markSize?: number;
   className?: string;
   wordmarkClassName?: string;
+  onClick?: () => void;
 }) {
-  return (
-    <span className={cn("inline-flex items-center gap-2 text-primary", className)}>
+  const content = (
+    <>
       <FolioMark size={markSize} />
       <span
         className={cn(
@@ -71,6 +73,28 @@ export function FolioLogo({
       >
         Folio
       </span>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "inline-flex items-center gap-2 text-primary hover:opacity-80",
+          className,
+        )}
+        aria-label="Folio 새로고침"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <span className={cn("inline-flex items-center gap-2 text-primary", className)}>
+      {content}
     </span>
   );
 }

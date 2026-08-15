@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
-import type { Account, AccountColor, Holding, ValuationSnapshot } from "@/lib/data/types";
-import type { AccountRow, HoldingRow, SnapshotRow } from "@/lib/supabase/types";
+import { hydrateHolding, hydrateHoldings, summarizeLots } from "@/lib/data/lots";
+import type { Account, AccountColor, Holding, HoldingLot, ValuationSnapshot } from "@/lib/data/types";
+import type { AccountRow, HoldingLotRow, HoldingRow, SnapshotRow } from "@/lib/supabase/types";
 
 function mapAccount(row: AccountRow): Account {
   return {
@@ -11,8 +12,20 @@ function mapAccount(row: AccountRow): Account {
   };
 }
 
-function mapHolding(row: HoldingRow): Holding {
+function mapLot(row: HoldingLotRow): HoldingLot {
   return {
+    id: row.id,
+    holdingId: row.holding_id,
+    buyPrice: Number(row.buy_price),
+    qty: Number(row.qty),
+    boughtAt: row.bought_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapHolding(row: HoldingRow, lots: HoldingLot[] = []): Holding {
+  return hydrateHolding({
     id: row.id,
     accountId: row.account_id,
     name: row.name,
@@ -23,9 +36,10 @@ function mapHolding(row: HoldingRow): Holding {
     qty: Number(row.qty),
     currency: row.currency,
     boughtAt: row.bought_at,
+    lots,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-  };
+  });
 }
 
 function mapSnapshot(row: SnapshotRow): ValuationSnapshot {
@@ -48,16 +62,29 @@ export async function loadPortfolio() {
     return { user: null, accounts: [], holdings: [], snapshots: [] };
   }
 
-  const [accountsRes, holdingsRes, snapshotsRes] = await Promise.all([
+  const [accountsRes, holdingsRes, lotsRes, snapshotsRes] = await Promise.all([
     supabase.from("accounts").select("*").order("created_at"),
     supabase.from("holdings").select("*").order("created_at"),
+    supabase.from("holding_lots").select("*").order("bought_at"),
     supabase.from("valuation_snapshots").select("*").order("captured_at"),
   ]);
+
+  const lotsByHolding = new Map<string, HoldingLot[]>();
+  if (!lotsRes.error) {
+    for (const row of lotsRes.data ?? []) {
+      const lot = mapLot(row);
+      const list = lotsByHolding.get(lot.holdingId) ?? [];
+      list.push(lot);
+      lotsByHolding.set(lot.holdingId, list);
+    }
+  }
 
   return {
     user,
     accounts: (accountsRes.data ?? []).map(mapAccount),
-    holdings: (holdingsRes.data ?? []).map(mapHolding),
+    holdings: hydrateHoldings(
+      (holdingsRes.data ?? []).map((row) => mapHolding(row, lotsByHolding.get(row.id) ?? [])),
+    ),
     snapshots: (snapshotsRes.data ?? []).map(mapSnapshot),
   };
 }
@@ -119,22 +146,149 @@ export async function insertHolding(input: Omit<Holding, "id" | "createdAt" | "u
   if (error || !data) {
     throw new Error(error?.message ?? "종목을 추가하지 못했습니다.");
   }
-  return mapHolding(data);
+  const lot = await insertLotRow(user.id, data.id, {
+    buyPrice: input.buyPrice,
+    qty: input.qty,
+    boughtAt: input.boughtAt,
+  });
+  return mapHolding(data, lot ? [lot] : []);
 }
 
-export async function patchHolding(
-  id: string,
+async function insertLotRow(
+  userId: string,
+  holdingId: string,
   input: { buyPrice: number; qty: number; boughtAt: string },
 ) {
   const supabase = createClient();
   const { data, error } = await supabase
+    .from("holding_lots")
+    .insert({
+      user_id: userId,
+      holding_id: holdingId,
+      buy_price: input.buyPrice,
+      qty: input.qty,
+      bought_at: input.boughtAt,
+    })
+    .select("*")
+    .single();
+  if (error || !data) {
+    throw new Error(error?.message ?? "매수 이력을 추가하지 못했습니다.");
+  }
+  return mapLot(data);
+}
+
+async function syncHoldingAggregates(holdingId: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("holding_lots")
+    .select("*")
+    .eq("holding_id", holdingId);
+  if (error) {
+    throw new Error(error.message);
+  }
+  const lots = (data ?? []).map(mapLot);
+  const summary = summarizeLots(lots);
+  const { data: holding, error: patchError } = await supabase
     .from("holdings")
+    .update({
+      buy_price: summary.buyPrice,
+      qty: summary.qty,
+      bought_at: summary.boughtAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", holdingId)
+    .select("*")
+    .single();
+  if (patchError || !holding) {
+    throw new Error(patchError?.message ?? "종목 합계를 갱신하지 못했습니다.");
+  }
+  return mapHolding(holding, lots);
+}
+
+export async function addLot(
+  holdingId: string,
+  input: { buyPrice: number; qty: number; boughtAt: string },
+) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("로그인이 필요합니다.");
+  }
+  await insertLotRow(user.id, holdingId, input);
+  return syncHoldingAggregates(holdingId);
+}
+
+export async function updateLot(
+  holdingId: string,
+  lotId: string,
+  input: { buyPrice: number; qty: number; boughtAt: string },
+) {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("holding_lots")
     .update({
       buy_price: input.buyPrice,
       qty: input.qty,
       bought_at: input.boughtAt,
       updated_at: new Date().toISOString(),
     })
+    .eq("id", lotId)
+    .eq("holding_id", holdingId);
+  if (error) {
+    throw new Error(error.message);
+  }
+  return syncHoldingAggregates(holdingId);
+}
+
+export async function removeLot(holdingId: string, lotId: string) {
+  const supabase = createClient();
+  const { error } = await supabase.from("holding_lots").delete().eq("id", lotId).eq("holding_id", holdingId);
+  if (error) {
+    throw new Error(error.message);
+  }
+  const { data: remaining, error: remainingError } = await supabase
+    .from("holding_lots")
+    .select("id")
+    .eq("holding_id", holdingId);
+  if (remainingError) {
+    throw new Error(remainingError.message);
+  }
+  if ((remaining ?? []).length === 0) {
+    await removeHolding(holdingId);
+    return { holding: null, removedHolding: true };
+  }
+  return { holding: await syncHoldingAggregates(holdingId), removedHolding: false };
+}
+
+export async function patchHolding(
+  id: string,
+  input: { buyPrice?: number; qty?: number; boughtAt?: string; name?: string },
+) {
+  const supabase = createClient();
+  const payload: {
+    buy_price?: number;
+    qty?: number;
+    bought_at?: string;
+    name?: string;
+    updated_at: string;
+  } = { updated_at: new Date().toISOString() };
+  if (input.buyPrice !== undefined) {
+    payload.buy_price = input.buyPrice;
+  }
+  if (input.qty !== undefined) {
+    payload.qty = input.qty;
+  }
+  if (input.boughtAt !== undefined) {
+    payload.bought_at = input.boughtAt;
+  }
+  if (input.name !== undefined) {
+    payload.name = input.name;
+  }
+  const { data, error } = await supabase
+    .from("holdings")
+    .update(payload)
     .eq("id", id)
     .select("*")
     .single();

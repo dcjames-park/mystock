@@ -4,7 +4,9 @@ create table if not exists public.accounts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
   label text not null,
-  color text not null default 'blue',
+  color text not null default 'blue' check (color in (
+    'blue', 'cyan', 'purple', 'orange', 'rose', 'green', 'amber', 'pink'
+  )),
   created_at timestamptz not null default now()
 );
 
@@ -19,6 +21,17 @@ create table if not exists public.holdings (
   buy_price numeric not null,
   qty numeric not null,
   currency text not null check (currency in ('KRW', 'USD')),
+  bought_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.holding_lots (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  holding_id uuid not null references public.holdings (id) on delete cascade,
+  buy_price numeric not null,
+  qty numeric not null,
   bought_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -45,11 +58,14 @@ create unique index if not exists valuation_snapshots_uniq
 create index if not exists accounts_user_id_idx on public.accounts (user_id);
 create index if not exists holdings_user_id_idx on public.holdings (user_id);
 create index if not exists holdings_account_id_idx on public.holdings (account_id);
+create index if not exists holding_lots_holding_id_idx on public.holding_lots (holding_id);
+create index if not exists holding_lots_user_id_idx on public.holding_lots (user_id);
 create index if not exists valuation_snapshots_user_captured_idx
   on public.valuation_snapshots (user_id, captured_at desc);
 
 alter table public.accounts enable row level security;
 alter table public.holdings enable row level security;
+alter table public.holding_lots enable row level security;
 alter table public.valuation_snapshots enable row level security;
 
 drop policy if exists "accounts_select_own" on public.accounts;
@@ -82,6 +98,22 @@ create policy "holdings_update_own" on public.holdings
 
 drop policy if exists "holdings_delete_own" on public.holdings;
 create policy "holdings_delete_own" on public.holdings
+  for delete to authenticated using (auth.uid() = user_id);
+
+drop policy if exists "holding_lots_select_own" on public.holding_lots;
+create policy "holding_lots_select_own" on public.holding_lots
+  for select to authenticated using (auth.uid() = user_id);
+
+drop policy if exists "holding_lots_insert_own" on public.holding_lots;
+create policy "holding_lots_insert_own" on public.holding_lots
+  for insert to authenticated with check (auth.uid() = user_id);
+
+drop policy if exists "holding_lots_update_own" on public.holding_lots;
+create policy "holding_lots_update_own" on public.holding_lots
+  for update to authenticated using (auth.uid() = user_id);
+
+drop policy if exists "holding_lots_delete_own" on public.holding_lots;
+create policy "holding_lots_delete_own" on public.holding_lots
   for delete to authenticated using (auth.uid() = user_id);
 
 drop policy if exists "snapshots_select_own" on public.valuation_snapshots;

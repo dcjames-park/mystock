@@ -39,8 +39,8 @@ export function SettingsView() {
           <CardHeader>
             <CardTitle>계정</CardTitle>
             <CardDescription>
-              {name}
-              {email && email !== name ? ` · ${email}` : ""}
+              {email || name}
+              {name && email && name !== email ? ` · ${name}` : ""}
             </CardDescription>
           </CardHeader>
         </Card>

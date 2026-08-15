@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { quoteManyYahoo } from "@/lib/market/yahoo";
+import { cachedQuoteSnapshot } from "@/lib/market/cached";
+import { USD_KRW_SOURCE } from "@/lib/money";
 
 export async function GET(request: NextRequest) {
   const raw = request.nextUrl.searchParams.get("tickers") ?? "";
@@ -9,9 +10,21 @@ export async function GET(request: NextRequest) {
     .filter(Boolean);
 
   try {
-    const quotes = await quoteManyYahoo(tickers);
-    return Response.json({ quotes });
+    const snapshot = await cachedQuoteSnapshot(tickers);
+    return Response.json(
+      {
+        quotes: snapshot.quotes,
+        fx: snapshot.fx
+          ? { ...snapshot.fx, source: USD_KRW_SOURCE, fallback: false }
+          : null,
+      },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=3600",
+        },
+      },
+    );
   } catch {
-    return Response.json({ quotes: [], error: "시세를 가져오지 못했습니다." }, { status: 502 });
+    return Response.json({ quotes: [], fx: null, error: "시세를 가져오지 못했습니다." }, { status: 502 });
   }
 }

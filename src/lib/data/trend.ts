@@ -1,3 +1,4 @@
+import { qtyOnDate } from "@/lib/data/lots";
 import type { Holding, Period, PeriodPoint, PricePoint } from "@/lib/data/types";
 import { toKrwAmount } from "@/lib/money";
 
@@ -94,24 +95,21 @@ export function buildTrend({
     }
 
     let value = 0;
-    let buy = 0;
     for (const item of relevant) {
-      if (toDateInput(item.boughtAt) > date) {
+      const qty = qtyOnDate(item, date);
+      if (qty <= 0) {
         continue;
       }
       const price =
         lastClose[item.ticker] ?? quotes[item.ticker] ?? item.buyPrice;
-      value += toKrwAmount(price * item.qty, item.currency, usdKrw);
-      if (toDateInput(item.boughtAt) === date) {
-        buy += toKrwAmount(item.buyPrice * item.qty, item.currency, usdKrw);
-      }
+      value += toKrwAmount(price * qty, item.currency, usdKrw);
     }
 
     daily.push({
       label: formatLabel(date, period),
       date,
       value: value / 10000,
-      buy: buy / 10000,
+      buy: 0,
     });
   }
 
@@ -135,4 +133,31 @@ export function toBoughtAt(dateInput: string) {
 
 export function todayStamp() {
   return localDateStamp();
+}
+
+export function buildBuyEvents(
+  holdings: Holding[],
+  usdKrw: number,
+  rangeStart?: string,
+  rangeEnd?: string,
+) {
+  return holdings
+    .flatMap((item) =>
+      (item.lots ?? []).map((lot) => ({
+        date: toDateInput(lot.boughtAt),
+        amount: toKrwAmount(lot.buyPrice * lot.qty, item.currency, usdKrw) / 10000,
+      })),
+    )
+    .filter((item) => {
+      if (item.amount <= 0) {
+        return false;
+      }
+      if (rangeStart && item.date < rangeStart) {
+        return false;
+      }
+      if (rangeEnd && item.date > rangeEnd) {
+        return false;
+      }
+      return true;
+    });
 }

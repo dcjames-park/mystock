@@ -1,4 +1,12 @@
-export type AccountColor = "blue" | "cyan" | "purple";
+export type AccountColor =
+  | "blue"
+  | "cyan"
+  | "purple"
+  | "orange"
+  | "rose"
+  | "green"
+  | "amber"
+  | "pink";
 export type Market = "kr" | "us";
 export type HoldingKind = "stock" | "etf";
 export type Currency = "KRW" | "USD";
@@ -22,6 +30,17 @@ export type HoldingRow = {
   buy_price: number;
   qty: number;
   currency: Currency;
+  bought_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HoldingLotRow = {
+  id: string;
+  user_id: string;
+  holding_id: string;
+  buy_price: number;
+  qty: number;
   bought_at: string;
   created_at: string;
   updated_at: string;
@@ -57,6 +76,16 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<HoldingRow>;
+        Relationships: [];
+      };
+      holding_lots: {
+        Row: HoldingLotRow;
+        Insert: Omit<HoldingLotRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<HoldingLotRow>;
         Relationships: [];
       };
       valuation_snapshots: {

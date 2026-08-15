@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -28,16 +29,27 @@ export function AppShell({
 export function ScreenHeader({
   title,
   onClose,
+  closeVariant = "outline",
 }: {
   title: string;
   onClose: () => void;
+  closeVariant?: "outline" | "secondary";
 }) {
   return (
     <div className="mb-6 flex items-center gap-3">
-      <Button variant="ghost" size="sm" onClick={onClose} className="px-2">
+      <p className="min-w-0 flex-1 truncate text-base font-medium">{title}</p>
+      <Button
+        variant={closeVariant}
+        size="sm"
+        onClick={onClose}
+        className={cn(
+          "shrink-0 gap-1 px-2.5",
+          closeVariant === "secondary" && "text-muted-foreground",
+        )}
+      >
+        <X className="size-3.5" />
         닫기
       </Button>
-      <p className="text-base font-medium">{title}</p>
     </div>
   );
 }
@@ -65,6 +77,11 @@ export const ACCOUNT_COLOR: Record<string, string> = {
   blue: "var(--account-blue)",
   cyan: "var(--account-cyan)",
   purple: "var(--account-purple)",
+  orange: "var(--account-orange)",
+  rose: "var(--account-rose)",
+  green: "var(--account-green)",
+  amber: "var(--account-amber)",
+  pink: "var(--account-pink)",
 };
 
 export function Field({
