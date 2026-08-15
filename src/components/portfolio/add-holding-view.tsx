@@ -194,7 +194,6 @@ export function AddHoldingView() {
                   void handleSearch();
                 }
               }}
-              placeholder="한글 종목명 또는 티커"
               className="min-w-0 flex-1"
             />
             <Button type="button" onClick={() => void handleSearch()}>
