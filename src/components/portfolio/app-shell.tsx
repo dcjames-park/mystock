@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, ChevronLeft, LogOut, Settings, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, LogOut, RefreshCw, Settings, X } from "lucide-react";
 import { signOut } from "@/app/actions/auth";
 import { FolioLogo } from "@/components/portfolio/logo";
 import { Badge } from "@/components/ui/badge";
@@ -39,10 +39,12 @@ export function navigateBack(
 
 export function AppShell({
   children,
+  dock,
   layout = "page",
   header = true,
 }: {
   children: ReactNode;
+  dock?: ReactNode;
   layout?: "page" | "form";
   header?: boolean;
 }) {
@@ -61,6 +63,7 @@ export function AppShell({
         {header ? <AppHeader /> : null}
         {children}
       </div>
+      {dock}
     </div>
   );
 }
@@ -70,7 +73,6 @@ function AppHeader() {
   const pathname = usePathname();
   const overlay = useOptionalOverlay();
   const { local, name, email, ready } = useUser();
-  const quotesAsOf = useOptionalPortfolio()?.quotesAsOf ?? null;
 
   return (
     <header className="mb-5 flex h-10 items-center gap-2 sm:mb-6">
@@ -87,12 +89,7 @@ function AppHeader() {
         />
         {local ? <Badge variant="secondary">로컬 스토리지</Badge> : null}
         <span className="flex-1" />
-        <span
-          className="hidden shrink-0 text-xs text-muted-foreground sm:inline whitespace-nowrap"
-          suppressHydrationWarning
-        >
-          {formatQuoteAsOf(quotesAsOf)}
-        </span>
+        <QuoteRefreshButton className="hidden sm:inline-flex" />
         <div className="flex min-w-0 items-center gap-0.5">
           <Button
             type="button"
@@ -125,6 +122,39 @@ function AppHeader() {
           </form>
         </div>
     </header>
+  );
+}
+
+export function QuoteRefreshButton({
+  className,
+}: {
+  className?: string;
+}) {
+  const portfolio = useOptionalPortfolio();
+  if (!portfolio) {
+    return null;
+  }
+  const { quotesAsOf, quotesRefreshing, refreshQuotes } = portfolio;
+  return (
+    <button
+      type="button"
+      disabled={quotesRefreshing}
+      title="시세 새로고침"
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 text-xs whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground disabled:opacity-70",
+        className,
+      )}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        void refreshQuotes();
+      }}
+    >
+      <RefreshCw className={cn("size-3", quotesRefreshing && "animate-spin")} />
+      <span suppressHydrationWarning>
+        {quotesRefreshing ? "시세 갱신 중" : formatQuoteAsOf(quotesAsOf)}
+      </span>
+    </button>
   );
 }
 

@@ -14,18 +14,12 @@ import {
   ACCOUNT_COLOR,
   DayChange,
   pnlClass,
+  QuoteRefreshButton,
   ScreenSkeleton,
 } from "@/components/portfolio/app-shell";
 import { ChartSurface, ComboChart, Sparkline } from "@/components/portfolio/charts";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Card,
   CardAction,
@@ -39,10 +33,9 @@ import { PeriodPicker } from "@/components/portfolio/period-picker";
 import { useOverlay } from "@/components/portfolio/overlay-context";
 import { usePortfolio } from "@/lib/data/use-portfolio";
 import { buildBuyEvents, buildTrend, toDateInput } from "@/lib/data/trend";
-import type { Holding, Period, PricePoint } from "@/lib/data/types";
+import type { Account, Holding, Period, PricePoint } from "@/lib/data/types";
 import {
   formatFxAsOf,
-  formatQuoteAsOf,
   formatFxRate,
   formatPct,
   formatPriceShort,
@@ -210,6 +203,113 @@ function HoldingSortBar({
   );
 }
 
+function AccountChipBar({
+  accounts,
+  selected,
+  allSelected,
+  plusFirst,
+  scroll,
+  onToggleAll,
+  onToggle,
+  onAdd,
+  className,
+}: {
+  accounts: Account[];
+  selected: Set<string>;
+  allSelected: boolean;
+  plusFirst?: boolean;
+  scroll?: boolean;
+  onToggleAll: () => void;
+  onToggle: (id: string) => void;
+  onAdd: () => void;
+  className?: string;
+}) {
+  const addButton = (
+    <Button
+      type="button"
+      size="icon-xs"
+      variant="outline"
+      className="shrink-0 rounded-full"
+      title="계좌 추가"
+      onClick={onAdd}
+    >
+      <Plus />
+    </Button>
+  );
+  const chips = (
+    <>
+      {accounts.length > 0 ? (
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          className="shrink-0 rounded-full"
+          style={
+            allSelected
+              ? {
+                  background: "var(--muted-foreground)",
+                  borderColor: "var(--muted-foreground)",
+                  color: "var(--background)",
+                }
+              : undefined
+          }
+          onClick={onToggleAll}
+        >
+          전체
+        </Button>
+      ) : null}
+      {accounts.map((item) => {
+        const on = selected.has(item.id);
+        const color = ACCOUNT_COLOR[item.color];
+        return (
+          <Button
+            key={item.id}
+            type="button"
+            size="xs"
+            variant="outline"
+            className="shrink-0 rounded-full"
+            style={
+              on
+                ? {
+                    background: color,
+                    borderColor: color,
+                    color: "var(--primary-foreground)",
+                  }
+                : undefined
+            }
+            onClick={() => onToggle(item.id)}
+          >
+            {on ? null : (
+              <span
+                className="size-1.5 rounded-full"
+                style={{ background: color }}
+              />
+            )}
+            {item.label}
+          </Button>
+        );
+      })}
+    </>
+  );
+
+  return (
+    <div className={cn("flex items-center gap-1.5", className)}>
+      {plusFirst ? addButton : null}
+      <div
+        className={cn(
+          "flex min-w-0 items-center gap-1.5",
+          scroll
+            ? "flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            : "flex-wrap",
+        )}
+      >
+        {chips}
+        {plusFirst ? null : addButton}
+      </div>
+    </div>
+  );
+}
+
 export function HomeView() {
   const overlay = useOverlay();
   const portfolio = usePortfolio();
@@ -233,7 +333,6 @@ export function HomeView() {
     holdings,
     quotes,
     prevCloses,
-    quotesAsOf,
     fx,
     histories,
     chartsLoading,
@@ -264,16 +363,6 @@ export function HomeView() {
     totals.buy === 0 ? 0 : ((totals.value - totals.buy) / totals.buy) * 100;
   const pnl = totals.value - totals.buy;
   const selectedAccounts = sortedAccounts.filter((item) => selected.has(item.id));
-  const accountMeta = {
-    label:
-      selectedAccounts.length === 0
-        ? "선택 없음"
-        : allSelected
-          ? "전체"
-          : selectedAccounts.length === 1
-            ? selectedAccounts[0].label
-            : selectedAccounts.map((item) => item.label).join(" · "),
-  };
   const showAccountMix = selectedAccounts.length !== 1;
   const krValue = rows
     .filter((item) => item.market === "kr")
@@ -348,84 +437,51 @@ export function HomeView() {
     return <ScreenSkeleton />;
   }
 
+  function toggleAllAccounts() {
+    if (allSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(sortedAccounts.map((item) => item.id));
+    }
+  }
+
+  function toggleAccount(id: string) {
+    const current = selectedIds ?? sortedAccounts.map((row) => row.id);
+    setSelectedIds(
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    );
+  }
+
   return (
-    <AppShell>
-      <div className="flex flex-col gap-5 sm:gap-6">
-        <div className="flex items-center justify-end gap-1.5">
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="outline"
-            className="rounded-full"
-            title="계좌 추가"
-            onClick={() => overlay.open({ m: "account-new" })}
-          >
-            <Plus />
-          </Button>
-          {accounts.length > 0 ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-auto min-h-7 max-w-[calc(100%-2.25rem)] shrink whitespace-normal rounded-full px-3 py-1.5"
-                >
-                  {selectedAccounts.length === 1 ? (
-                    <span
-                      className="size-2 shrink-0 rounded-full"
-                      style={{
-                        background: ACCOUNT_COLOR[selectedAccounts[0].color],
-                      }}
-                    />
-                  ) : null}
-                  <span className="min-w-0 text-right leading-snug">
-                    {accountMeta.label}
-                  </span>
-                  <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="min-w-64 sm:min-w-72"
-              >
-                <DropdownMenuCheckboxItem
-                  checked={allSelected}
-                  onSelect={(event) => event.preventDefault()}
-                  onCheckedChange={() => {
-                    setSelectedIds(null);
-                  }}
-                >
-                  전체
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuSeparator />
-                {sortedAccounts.map((item) => (
-                  <DropdownMenuCheckboxItem
-                    key={item.id}
-                    checked={selected.has(item.id)}
-                    onSelect={(event) => event.preventDefault()}
-                    onCheckedChange={() => {
-                      const current =
-                        selectedIds ?? sortedAccounts.map((row) => row.id);
-                      const next = current.includes(item.id)
-                        ? current.filter((id) => id !== item.id)
-                        : [...current, item.id];
-                      setSelectedIds(
-                        next.length === sortedAccounts.length ? null : next,
-                      );
-                    }}
-                  >
-                    <span
-                      className="size-2 shrink-0 rounded-full"
-                      style={{ background: ACCOUNT_COLOR[item.color] }}
-                    />
-                    {item.label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
+    <AppShell
+      dock={
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pt-2 shadow-[0_-8px_24px_-12px_rgb(0_0_0/0.15)] backdrop-blur-md sm:hidden pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          <AccountChipBar
+            className="mx-auto max-w-6xl px-4"
+            accounts={sortedAccounts}
+            selected={selected}
+            allSelected={allSelected}
+            plusFirst
+            scroll
+            onToggleAll={toggleAllAccounts}
+            onToggle={toggleAccount}
+            onAdd={() => overlay.open({ m: "account-new" })}
+          />
         </div>
+      }
+    >
+      <div className="flex flex-col gap-5 pb-[calc(3.75rem+env(safe-area-inset-bottom))] sm:gap-6 sm:pb-0">
+        <AccountChipBar
+          className="hidden sm:flex"
+          accounts={sortedAccounts}
+          selected={selected}
+          allSelected={allSelected}
+          onToggleAll={toggleAllAccounts}
+          onToggle={toggleAccount}
+          onAdd={() => overlay.open({ m: "account-new" })}
+        />
 
         {accounts.length > 0 ? (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -445,9 +501,7 @@ export function HomeView() {
             >
               <CardTitle>자산 현황</CardTitle>
               <CardAction className="row-span-1 flex items-center gap-2 self-center">
-                <span className="min-w-[9.5rem] text-right text-xs text-muted-foreground">
-                  {summaryOpen ? formatQuoteAsOf(quotesAsOf) : "펼침"}
-                </span>
+                <QuoteRefreshButton className="justify-end" />
                 <ChevronDown
                   className={cn(
                     "size-4 text-muted-foreground transition-transform",
@@ -576,7 +630,7 @@ export function HomeView() {
 
         <section className="space-y-5">
           <h2 className="font-heading text-base font-medium sm:text-lg">
-            보유 종목
+            계좌별 종목
           </h2>
           {accounts.length === 0 ? (
             <div className="rounded-xl border border-dashed px-4 py-8 text-center">
