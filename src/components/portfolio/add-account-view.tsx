@@ -107,10 +107,7 @@ export function AddAccountView() {
             {accounts.map((item) => (
               <div
                 key={item.id}
-                className="flex items-center gap-3 rounded-lg px-3 py-2.5"
-                style={{
-                  background: `color-mix(in oklch, ${ACCOUNT_COLOR[item.color]} 16%, var(--background))`,
-                }}
+                className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2.5"
               >
                 <span
                   className="size-2.5 shrink-0 rounded-full"

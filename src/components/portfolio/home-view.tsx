@@ -20,6 +20,13 @@ import { ChartSurface, ComboChart, Sparkline } from "@/components/portfolio/char
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Card,
   CardAction,
   CardContent,
@@ -69,13 +76,12 @@ const DASH_SUMMARY_KEY = "mystock.dash.summaryOpen";
 const DASH_TREND_KEY = "mystock.dash.trendOpen";
 const HOLDING_SORT_KEY = "mystock.holdingSort";
 
-type HoldingSort = "value" | "rate" | "price" | "change";
+type HoldingSort = "value" | "rate" | "change";
 type SortDir = "asc" | "desc";
 
 const HOLDING_SORTS: { id: HoldingSort; label: string }[] = [
   { id: "value", label: "평가금액" },
   { id: "rate", label: "수익률" },
-  { id: "price", label: "현재가" },
   { id: "change", label: "전일 대비" },
 ];
 
@@ -117,10 +123,6 @@ function compareHoldings(
   let delta = 0;
   if (sort === "rate") {
     delta = aKrw.rate - bKrw.rate;
-  } else if (sort === "price") {
-    const aKrwPrice = a.currency === "USD" ? aPrice * usdKrw : aPrice;
-    const bKrwPrice = b.currency === "USD" ? bPrice * usdKrw : bPrice;
-    delta = aKrwPrice - bKrwPrice;
   } else if (sort === "change") {
     const aChange = dayChangePct(aPrice, prevCloses[a.ticker]);
     const bChange = dayChangePct(bPrice, prevCloses[b.ticker]);
@@ -166,6 +168,46 @@ function buyMarkRatio(series: PricePoint[], buy: string) {
     return null;
   }
   return index / (series.length - 1);
+}
+
+function HoldingSortBar({
+  holdingSort,
+  sortDir,
+  onChange,
+}: {
+  holdingSort: HoldingSort;
+  sortDir: SortDir;
+  onChange: (id: HoldingSort, dir: SortDir) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-0.5 px-1 pt-2">
+      {HOLDING_SORTS.map((item) => {
+        const active = holdingSort === item.id;
+        const SortIcon =
+          active && sortDir === "asc" ? ArrowUpNarrowWide : ArrowDownWideNarrow;
+        return (
+          <Button
+            key={item.id}
+            type="button"
+            size="sm"
+            variant={active ? "secondary" : "ghost"}
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={() => {
+              onChange(
+                item.id,
+                active ? (sortDir === "desc" ? "asc" : "desc") : "desc",
+              );
+            }}
+          >
+            {item.label}
+            <SortIcon
+              className={cn("size-3.5", active ? "opacity-100" : "opacity-60")}
+            />
+          </Button>
+        );
+      })}
+    </div>
+  );
 }
 
 export function HomeView() {
@@ -309,79 +351,7 @@ export function HomeView() {
   return (
     <AppShell>
       <div className="flex flex-col gap-5 sm:gap-6">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Button
-            type="button"
-            size="xs"
-            variant="outline"
-            className={cn(
-              "rounded-full border",
-              allSelected ? "hover:opacity-90" : "hover:brightness-[0.97]",
-            )}
-            style={
-              allSelected
-                ? {
-                    background: "var(--muted-foreground)",
-                    borderColor: "var(--muted-foreground)",
-                    color: "var(--background)",
-                  }
-                : {
-                    background:
-                      "color-mix(in oklch, var(--muted-foreground) 12%, var(--background))",
-                    borderColor:
-                      "color-mix(in oklch, var(--muted-foreground) 28%, var(--border))",
-                    color: "var(--foreground)",
-                  }
-            }
-            onClick={() => {
-              if (allSelected) {
-                setSelectedIds([]);
-              } else {
-                setSelectedIds(sortedAccounts.map((item) => item.id));
-              }
-            }}
-          >
-            전체
-          </Button>
-          {sortedAccounts.map((item) => {
-            const on = selected.has(item.id);
-            const color = ACCOUNT_COLOR[item.color];
-            return (
-              <Button
-                key={item.id}
-                type="button"
-                size="xs"
-                variant="outline"
-                className={cn(
-                  "rounded-full border",
-                  on ? "hover:opacity-90" : "hover:brightness-[0.97]",
-                )}
-                style={
-                  on
-                    ? {
-                        background: color,
-                        borderColor: color,
-                        color: "var(--primary-foreground)",
-                      }
-                    : {
-                        background: `color-mix(in oklch, ${color} 16%, var(--background))`,
-                        borderColor: `color-mix(in oklch, ${color} 40%, var(--border))`,
-                        color: "var(--foreground)",
-                      }
-                }
-                onClick={() => {
-                  const current = selectedIds ?? sortedAccounts.map((row) => row.id);
-                  setSelectedIds(
-                    current.includes(item.id)
-                      ? current.filter((id) => id !== item.id)
-                      : [...current, item.id],
-                  );
-                }}
-              >
-                {item.label}
-              </Button>
-            );
-          })}
+        <div className="flex items-center justify-end gap-1.5">
           <Button
             type="button"
             size="icon-xs"
@@ -392,6 +362,69 @@ export function HomeView() {
           >
             <Plus />
           </Button>
+          {accounts.length > 0 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-auto min-h-7 max-w-[calc(100%-2.25rem)] shrink whitespace-normal rounded-full px-3 py-1.5"
+                >
+                  {selectedAccounts.length === 1 ? (
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{
+                        background: ACCOUNT_COLOR[selectedAccounts[0].color],
+                      }}
+                    />
+                  ) : null}
+                  <span className="min-w-0 text-right leading-snug">
+                    {accountMeta.label}
+                  </span>
+                  <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="min-w-64 sm:min-w-72"
+              >
+                <DropdownMenuCheckboxItem
+                  checked={allSelected}
+                  onSelect={(event) => event.preventDefault()}
+                  onCheckedChange={() => {
+                    setSelectedIds(null);
+                  }}
+                >
+                  전체
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                {sortedAccounts.map((item) => (
+                  <DropdownMenuCheckboxItem
+                    key={item.id}
+                    checked={selected.has(item.id)}
+                    onSelect={(event) => event.preventDefault()}
+                    onCheckedChange={() => {
+                      const current =
+                        selectedIds ?? sortedAccounts.map((row) => row.id);
+                      const next = current.includes(item.id)
+                        ? current.filter((id) => id !== item.id)
+                        : [...current, item.id];
+                      setSelectedIds(
+                        next.length === sortedAccounts.length ? null : next,
+                      );
+                    }}
+                  >
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ background: ACCOUNT_COLOR[item.color] }}
+                    />
+                    {item.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </div>
 
         {accounts.length > 0 ? (
@@ -410,7 +443,7 @@ export function HomeView() {
                 }
               }}
             >
-              <CardTitle>{accountMeta.label}</CardTitle>
+              <CardTitle>자산 현황</CardTitle>
               <CardAction className="row-span-1 flex items-center gap-2 self-center">
                 <span className="min-w-[9.5rem] text-right text-xs text-muted-foreground">
                   {summaryOpen ? formatQuoteAsOf(quotesAsOf) : "펼침"}
@@ -508,7 +541,7 @@ export function HomeView() {
                 }
               }}
             >
-              <CardTitle>기간별 추이</CardTitle>
+              <CardTitle>평가 추이</CardTitle>
               <CardAction className="row-span-1 flex items-center gap-2 self-center">
                 {trendOpen ? null : (
                   <span className="text-xs text-muted-foreground">펼침</span>
@@ -542,48 +575,9 @@ export function HomeView() {
         ) : null}
 
         <section className="space-y-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="font-heading text-base font-medium sm:text-lg">
-              보유 종목
-            </h2>
-            {accounts.length > 0 ? (
-              <div className="ml-auto flex flex-wrap items-center justify-end gap-0.5">
-                {HOLDING_SORTS.map((item) => {
-                  const active = holdingSort === item.id;
-                  const SortIcon =
-                    active && sortDir === "asc" ? ArrowUpNarrowWide : ArrowDownWideNarrow;
-                  return (
-                    <Button
-                      key={item.id}
-                      type="button"
-                      size="sm"
-                      variant={active ? "secondary" : "ghost"}
-                      className="h-7 gap-1 px-2 text-xs"
-                      onClick={() => {
-                        const nextDir =
-                          active ? (sortDir === "desc" ? "asc" : "desc") : "desc";
-                        const nextId = item.id;
-                        setHoldingSort(nextId);
-                        setSortDir(nextDir);
-                        window.localStorage.setItem(
-                          HOLDING_SORT_KEY,
-                          `${nextId}:${nextDir}`,
-                        );
-                      }}
-                    >
-                      {item.label}
-                      <SortIcon
-                        className={cn(
-                          "size-3.5",
-                          active ? "opacity-100" : "opacity-60",
-                        )}
-                      />
-                    </Button>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
+          <h2 className="font-heading text-base font-medium sm:text-lg">
+            보유 종목
+          </h2>
           {accounts.length === 0 ? (
             <div className="rounded-xl border border-dashed px-4 py-8 text-center">
               <p className="font-heading text-base font-medium">아직 계좌가 없습니다</p>
@@ -613,10 +607,7 @@ export function HomeView() {
             return (
             <div key={group.id}>
               <div
-                className="cursor-pointer rounded-lg px-3 py-2.5"
-                style={{
-                  background: `color-mix(in oklch, ${ACCOUNT_COLOR[group.color]} 16%, var(--background))`,
-                }}
+                className="cursor-pointer rounded-lg border bg-muted/30 px-3 py-2.5 hover:bg-muted/45"
                 onClick={() =>
                   setExpanded((prev) => ({
                     ...prev,
@@ -722,22 +713,36 @@ export function HomeView() {
                       이 계좌에 종목이 없습니다. 종목 추가로 넣으세요.
                     </p>
                   ) : (
-                    <div
-                      className="ml-2 divide-y border-l-2 pl-3 [&>*:last-child]:border-b"
-                      style={{ borderColor: ACCOUNT_COLOR[group.color] }}
-                    >
-                      {group.items.map((item) => (
-                        <HoldingRow
-                          key={item.id}
-                          item={item}
-                          period={period}
-                          quotes={quotes}
-                          prevClose={prevCloses[item.ticker]}
-                          histories={histories}
-                          usdKrw={usdKrw}
-                        />
-                      ))}
-                    </div>
+                    <>
+                      <HoldingSortBar
+                        holdingSort={holdingSort}
+                        sortDir={sortDir}
+                        onChange={(id, dir) => {
+                          setHoldingSort(id);
+                          setSortDir(dir);
+                          window.localStorage.setItem(
+                            HOLDING_SORT_KEY,
+                            `${id}:${dir}`,
+                          );
+                        }}
+                      />
+                      <div
+                        className="ml-2 divide-y border-l-2 pl-3 [&>*:last-child]:border-b"
+                        style={{ borderColor: ACCOUNT_COLOR[group.color] }}
+                      >
+                        {group.items.map((item) => (
+                          <HoldingRow
+                            key={item.id}
+                            item={item}
+                            period={period}
+                            quotes={quotes}
+                            prevClose={prevCloses[item.ticker]}
+                            histories={histories}
+                            usdKrw={usdKrw}
+                          />
+                        ))}
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
