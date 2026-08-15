@@ -227,9 +227,9 @@ function AccountChipBar({
   const addButton = (
     <Button
       type="button"
-      size="icon-xs"
+      size="icon-sm"
       variant="outline"
-      className="shrink-0 rounded-full"
+      className="size-10 shrink-0 rounded-full"
       title="계좌 추가"
       onClick={onAdd}
     >
@@ -241,9 +241,9 @@ function AccountChipBar({
       {accounts.length > 0 ? (
         <Button
           type="button"
-          size="xs"
+          size="sm"
           variant="outline"
-          className="shrink-0 rounded-full"
+          className="h-10 shrink-0 rounded-full px-3.5 text-sm"
           style={
             allSelected
               ? {
@@ -265,9 +265,9 @@ function AccountChipBar({
           <Button
             key={item.id}
             type="button"
-            size="xs"
+            size="sm"
             variant="outline"
-            className="shrink-0 rounded-full"
+            className="h-10 shrink-0 rounded-full px-3.5 text-sm"
             style={
               on
                 ? {
@@ -281,7 +281,7 @@ function AccountChipBar({
           >
             {on ? null : (
               <span
-                className="size-1.5 rounded-full"
+                className="size-2 rounded-full"
                 style={{ background: color }}
               />
             )}
@@ -472,7 +472,7 @@ export function HomeView() {
         </div>
       }
     >
-      <div className="flex flex-col gap-5 pb-[calc(3.75rem+env(safe-area-inset-bottom))] sm:gap-6 sm:pb-0">
+      <div className="flex flex-col gap-5 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:gap-6 sm:pb-0">
         <AccountChipBar
           className="hidden sm:flex"
           accounts={sortedAccounts}
