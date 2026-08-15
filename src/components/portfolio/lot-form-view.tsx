@@ -74,6 +74,7 @@ export function LotFormView({ mode }: { mode: "add" | "edit" }) {
       <AppShell>
         <ScreenHeader
           title={mode === "add" ? "추가 매수" : "매수 수정"}
+          dismiss
         />
         <p className="text-sm text-muted-foreground">종목을 찾을 수 없습니다.</p>
       </AppShell>
@@ -119,6 +120,7 @@ export function LotFormView({ mode }: { mode: "add" | "edit" }) {
       <ScreenHeader
         title={mode === "add" ? "추가 매수" : "매수 수정"}
         fallbackHref={`/holdings/${holdingId}`}
+        dismiss
       />
       <div className="mb-4">
         <p className="font-heading text-xl font-semibold leading-7">{holding.name}</p>

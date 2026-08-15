@@ -25,7 +25,7 @@ export function DeleteLotView() {
   if (!holding || !lot) {
     return (
       <AppShell>
-        <ScreenHeader title="매수 이력 삭제" />
+        <ScreenHeader title="매수 이력 삭제" dismiss />
         <p className="text-sm text-muted-foreground">매수 이력을 찾을 수 없습니다.</p>
       </AppShell>
     );
@@ -51,7 +51,7 @@ export function DeleteLotView() {
 
   return (
     <AppShell>
-      <ScreenHeader title="매수 이력 삭제" />
+      <ScreenHeader title="매수 이력 삭제" dismiss />
       <FormPanel>
         <p className="text-xs text-muted-foreground">매수 이력 삭제</p>
         <p className="mt-2 font-heading text-[22px] font-semibold leading-7">
