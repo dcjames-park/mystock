@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import {
   AppShell,
   Field,
@@ -21,14 +20,14 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { AmountInput } from "@/components/portfolio/amount-input";
 import { searchHoldings, usePortfolio } from "@/lib/data/use-portfolio";
+import { useOverlay, useRouteIds } from "@/components/portfolio/overlay-context";
 import { localDateStamp, toBoughtAt } from "@/lib/data/trend";
 import { fetchNaverHoldingName, isKoreanName } from "@/lib/market/naver-name";
 import type { SearchHit } from "@/lib/data/types";
 
 export function AddHoldingView() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const presetAccountId = searchParams.get("accountId") ?? "";
+  const overlay = useOverlay();
+  const { accountId: presetAccountId = "" } = useRouteIds();
   const { ready, accounts, holdings, addHolding } = usePortfolio();
   const [accountId, setAccountId] = useState(presetAccountId || accounts[0]?.id || "");
   const [query, setQuery] = useState("");
@@ -129,7 +128,7 @@ export function AddHoldingView() {
       const name = nameResolveRef.current
         ? await nameResolveRef.current
         : selected.name;
-      const holding = await addHolding({
+      await addHolding({
         accountId: currentAccountId,
         name,
         ticker: selected.ticker,
@@ -140,7 +139,7 @@ export function AddHoldingView() {
         currency: selected.market === "kr" ? "KRW" : "USD",
         boughtAt: toBoughtAt(boughtOn),
       });
-      router.push(`/holdings/${holding.id}`);
+      overlay.close();
     } catch (err) {
       setError(err instanceof Error ? err.message : "저장에 실패했습니다.");
       setPending(false);
@@ -153,11 +152,7 @@ export function AddHoldingView() {
 
   return (
     <AppShell>
-      <ScreenHeader
-        title="종목 추가"
-        onClose={() => router.push("/")}
-        closeVariant="secondary"
-      />
+      <ScreenHeader title="종목 추가" dismiss />
       <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
         <div className="flex flex-col gap-4">
         <Field label="계좌">
@@ -166,7 +161,7 @@ export function AddHoldingView() {
               type="button"
               variant="outline"
               className="w-full justify-start border-dashed"
-              onClick={() => router.push("/accounts/new")}
+              onClick={() => overlay.open({ m: "account-new" })}
             >
               계좌가 없습니다. 먼저 추가하세요.
             </Button>
@@ -239,7 +234,7 @@ export function AddHoldingView() {
                       <Button
                         type="button"
                         size="sm"
-                        onClick={() => router.push(`/holdings/${held.id}/buy`)}
+                        onClick={() => overlay.open({ m: "lot-add", id: held.id })}
                       >
                         매수 추가
                       </Button>
@@ -279,7 +274,7 @@ export function AddHoldingView() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => router.push(`/holdings/${existingHolding.id}/buy`)}
+              onClick={() => overlay.open({ m: "lot-add", id: existingHolding.id })}
             >
               종목 상세에서 매수 추가
             </Button>

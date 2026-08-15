@@ -1,13 +1,13 @@
 "use client";
 
 import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Moon, Sun } from "lucide-react";
 import { signOut } from "@/app/actions/auth";
 import {
   AppShell,
   FormPanel,
+  OverlayCloseButton,
   ScreenHeader,
 } from "@/components/portfolio/app-shell";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -29,7 +29,6 @@ function subscribeClient() {
 }
 
 export function SettingsView() {
-  const router = useRouter();
   const { local, name, email } = useUser();
   const { theme, setTheme } = useTheme();
   const { accounts, holdings, importLots } = usePortfolio();
@@ -83,7 +82,7 @@ export function SettingsView() {
 
   return (
     <AppShell>
-      <ScreenHeader title="설정" onClose={() => router.push("/")} />
+      <ScreenHeader title="설정" dismiss />
       <FormPanel className="flex flex-col gap-4">
         <Card>
           <CardHeader>
@@ -193,6 +192,7 @@ export function SettingsView() {
             </Button>
           </form>
         )}
+        <OverlayCloseButton wide />
       </FormPanel>
     </AppShell>
   );

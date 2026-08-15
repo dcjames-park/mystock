@@ -1,19 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { AppShell, FormPanel, ScreenSkeleton } from "@/components/portfolio/app-shell";
+import { AppShell, FormPanel, ScreenHeader, ScreenSkeleton } from "@/components/portfolio/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { useOverlay, useRouteIds } from "@/components/portfolio/overlay-context";
 import { usePortfolio } from "@/lib/data/use-portfolio";
 import { formatDateKo, formatPrice } from "@/lib/money";
 
 export function DeleteLotView() {
-  const router = useRouter();
-  const params = useParams<{ id: string; lotId: string }>();
+  const overlay = useOverlay();
+  const { id, lotId: routeLotId } = useRouteIds();
   const { ready, holdings, removeLot } = usePortfolio();
-  const holding = holdings.find((item) => item.id === params.id);
-  const lot = holding?.lots.find((item) => item.id === params.lotId);
+  const holding = holdings.find((item) => item.id === id);
+  const lot = holding?.lots.find((item) => item.id === routeLotId);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastLot = (holding?.lots.length ?? 0) <= 1;
@@ -25,7 +25,8 @@ export function DeleteLotView() {
   if (!holding || !lot) {
     return (
       <AppShell>
-        <p className="pt-16 text-sm text-muted-foreground">매수 이력을 찾을 수 없습니다.</p>
+        <ScreenHeader title="매수 이력 삭제" />
+        <p className="text-sm text-muted-foreground">매수 이력을 찾을 수 없습니다.</p>
       </AppShell>
     );
   }
@@ -37,7 +38,11 @@ export function DeleteLotView() {
     setPending(true);
     try {
       const result = await removeLot(holdingId, lotId);
-      router.push(result.removedHolding ? "/" : `/holdings/${holdingId}`);
+      if (result.removedHolding) {
+        overlay.closeToMain();
+      } else {
+        overlay.close();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "삭제에 실패했습니다.");
       setPending(false);
@@ -46,7 +51,8 @@ export function DeleteLotView() {
 
   return (
     <AppShell>
-      <FormPanel className="pt-12">
+      <ScreenHeader title="매수 이력 삭제" />
+      <FormPanel>
         <p className="text-xs text-muted-foreground">매수 이력 삭제</p>
         <p className="mt-2 font-heading text-[22px] font-semibold leading-7">
           {holding.name}
@@ -79,11 +85,7 @@ export function DeleteLotView() {
           >
             {pending ? "삭제 중..." : "삭제"}
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => router.push(`/holdings/${holdingId}`)}
-          >
+          <Button type="button" variant="ghost" onClick={() => overlay.close()}>
             취소
           </Button>
         </div>

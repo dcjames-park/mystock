@@ -1,5 +1,11 @@
-import { HoldingDetailView } from "@/components/portfolio/holding-detail-view";
+import { redirect } from "next/navigation";
+import { overlayHref } from "@/lib/overlay";
 
-export default function HoldingDetailPage() {
-  return <HoldingDetailView />;
+export default async function HoldingDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  redirect(overlayHref({ m: "holding", id }));
 }

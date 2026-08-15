@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   ACCOUNT_COLOR,
   AppShell,
@@ -13,13 +12,19 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePortfolio } from "@/lib/data/use-portfolio";
+import {
+  useOverlay,
+  useOverlayFrame,
+} from "@/components/portfolio/overlay-context";
+import { cn } from "@/lib/utils";
 
 function sameAccountName(a: string, b: string) {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
 export function AddAccountView() {
-  const router = useRouter();
+  const overlay = useOverlay();
+  const inOverlay = useOverlayFrame();
   const { ready, accounts, addAccount } = usePortfolio();
   const [name, setName] = useState("");
   const [pending, setPending] = useState(false);
@@ -39,7 +44,7 @@ export function AddAccountView() {
     setPending(true);
     try {
       await addAccount(label);
-      router.push("/");
+      overlay.close();
     } catch (err) {
       setError(err instanceof Error ? err.message : "추가에 실패했습니다.");
       setPending(false);
@@ -52,12 +57,13 @@ export function AddAccountView() {
 
   return (
     <AppShell>
-      <ScreenHeader
-        title="계좌 추가"
-        onClose={() => router.push("/")}
-        closeVariant="secondary"
-      />
-      <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
+      <ScreenHeader title="계좌 추가" dismiss />
+      <div
+        className={cn(
+          "grid gap-8",
+          !inOverlay && "lg:grid-cols-2 lg:items-start",
+        )}
+      >
       <div>
       <Field label="계좌명">
         <Input

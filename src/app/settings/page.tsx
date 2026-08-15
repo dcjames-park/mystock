@@ -1,5 +1,6 @@
-import { SettingsView } from "@/components/portfolio/settings-view";
+import { redirect } from "next/navigation";
+import { overlayHref } from "@/lib/overlay";
 
 export default function SettingsPage() {
-  return <SettingsView />;
+  redirect(overlayHref({ m: "settings" }));
 }

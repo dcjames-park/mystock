@@ -1,5 +1,11 @@
-import { DeleteHoldingView } from "@/components/portfolio/delete-holding-view";
+import { redirect } from "next/navigation";
+import { overlayHref } from "@/lib/overlay";
 
-export default function DeleteHoldingPage() {
-  return <DeleteHoldingView />;
+export default async function DeleteHoldingPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  redirect(overlayHref({ m: "holding-delete", id }));
 }

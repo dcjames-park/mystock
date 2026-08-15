@@ -10,7 +10,7 @@ export type AccountColor =
   | "green"
   | "amber"
   | "pink";
-export type Period = "1m" | "6m" | "1y" | "2y" | "5y";
+export type Period = "1m" | "6m" | "1y" | "2y" | "5y" | "10y";
 
 export type QuoteDetail = {
   ticker: string;

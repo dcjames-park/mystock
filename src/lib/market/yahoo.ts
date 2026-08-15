@@ -141,17 +141,58 @@ function previousCloseFromSpark(item: unknown): number | null {
     return null;
   }
   const row = item as {
+    meta?: {
+      previousClose?: unknown;
+      chartPreviousClose?: unknown;
+      regularMarketPreviousClose?: unknown;
+    };
     response?: Array<{
-      meta?: { previousClose?: unknown; chartPreviousClose?: unknown };
+      meta?: {
+        previousClose?: unknown;
+        chartPreviousClose?: unknown;
+        regularMarketPreviousClose?: unknown;
+      };
     }>;
   };
-  const meta = row.response?.[0]?.meta;
-  const previous = Number(meta?.previousClose);
-  if (Number.isFinite(previous) && previous > 0) {
-    return previous;
+  const meta = row.response?.[0]?.meta ?? row.meta;
+  const candidates = [
+    meta?.previousClose,
+    meta?.chartPreviousClose,
+    meta?.regularMarketPreviousClose,
+  ];
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isFinite(value) && value > 0) {
+      return value;
+    }
   }
-  const chartPrev = Number(meta?.chartPreviousClose);
-  return Number.isFinite(chartPrev) && chartPrev > 0 ? chartPrev : null;
+  return null;
+}
+
+async function previousCloseFromChart(ticker: string): Promise<number | null> {
+  const encoded = encodeURIComponent(ticker);
+  const data = await yahooJson(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?range=1d&interval=1d`,
+  );
+  const meta = data?.chart?.result?.[0]?.meta as
+    | {
+        previousClose?: unknown;
+        chartPreviousClose?: unknown;
+        regularMarketPreviousClose?: unknown;
+      }
+    | undefined;
+  const candidates = [
+    meta?.previousClose,
+    meta?.chartPreviousClose,
+    meta?.regularMarketPreviousClose,
+  ];
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isFinite(value) && value > 0) {
+      return value;
+    }
+  }
+  return null;
 }
 
 function priceFromSpark(item: unknown): number | null {
@@ -309,6 +350,24 @@ export async function quoteSnapshotYahoo(tickers: string[]) {
     }
   }
 
+  const needPrev = [...byTicker.values()].filter(
+    (item) => item.ticker !== USD_KRW_SYMBOL && (item.previousClose == null || item.previousClose <= 0),
+  );
+  if (needPrev.length > 0) {
+    const filled = await Promise.all(
+      needPrev.map(async (item) => {
+        const previousClose = await previousCloseFromChart(item.ticker);
+        return { ticker: item.ticker, previousClose };
+      }),
+    );
+    for (const item of filled) {
+      const current = byTicker.get(item.ticker);
+      if (current && item.previousClose != null) {
+        byTicker.set(item.ticker, { ...current, previousClose: item.previousClose });
+      }
+    }
+  }
+
   const fxRow = byTicker.get(USD_KRW_SYMBOL);
   const fx =
     fxRow && fxRow.lastPrice >= 800 && fxRow.lastPrice <= 2500
@@ -412,6 +471,7 @@ const RANGE: Record<Period, { range: string; interval: string }> = {
   "1y": { range: "1y", interval: "1wk" },
   "2y": { range: "2y", interval: "1wk" },
   "5y": { range: "5y", interval: "1mo" },
+  "10y": { range: "10y", interval: "1mo" },
 };
 
 function downsample(values: number[], count: number) {

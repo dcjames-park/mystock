@@ -31,7 +31,9 @@ function notifyStoreChanged() {
   if (!canUseStorage()) {
     return;
   }
-  window.dispatchEvent(new Event(CHANGE_EVENT));
+  queueMicrotask(() => {
+    window.dispatchEvent(new Event(CHANGE_EVENT));
+  });
 }
 
 function readJson<T>(key: string, fallback: T): T {

@@ -1,6 +1,9 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function ComboChart({
   labels,
@@ -251,7 +254,8 @@ export function Sparkline({
   const chart = (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      className={showLegend ? "block h-[64px] w-full" : "h-full w-full"}
+      className={showLegend ? "block w-full" : "h-full w-full"}
+      style={showLegend ? { height } : undefined}
       preserveAspectRatio="none"
     >
       <path d={area} fill={color} opacity={0.12} />
@@ -312,6 +316,31 @@ export function Sparkline({
           매수일
         </span>
       </div>
+    </div>
+  );
+}
+
+export function ChartSurface({
+  period,
+  loading = false,
+  className,
+  children,
+}: {
+  period: string;
+  loading?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={cn("relative min-h-[172px]", className)}>
+      <div key={period} className="chart-enter">
+        {children}
+      </div>
+      {loading ? (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/55">
+          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : null}
     </div>
   );
 }

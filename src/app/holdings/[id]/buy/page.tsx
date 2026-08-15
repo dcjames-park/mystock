@@ -1,5 +1,11 @@
-import { LotFormView } from "@/components/portfolio/lot-form-view";
+import { redirect } from "next/navigation";
+import { overlayHref } from "@/lib/overlay";
 
-export default function AddLotPage() {
-  return <LotFormView mode="add" />;
+export default async function AddLotPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  redirect(overlayHref({ m: "lot-add", id }));
 }

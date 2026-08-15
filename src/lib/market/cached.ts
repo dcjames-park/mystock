@@ -40,7 +40,12 @@ export async function cachedQuoteSnapshot(
   const missing: string[] = [];
   for (const ticker of unique) {
     const hit = cacheGet<QuoteSnapshotItem>(`quote:${ticker}`);
-    if (hit && !options?.fresh) {
+    if (
+      hit &&
+      !options?.fresh &&
+      hit.previousClose != null &&
+      hit.previousClose > 0
+    ) {
       quotes.push(hit);
     } else {
       missing.push(ticker);

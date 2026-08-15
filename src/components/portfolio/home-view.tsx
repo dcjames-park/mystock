@@ -1,15 +1,23 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide,
+  ChevronDown,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import {
   AppShell,
   ACCOUNT_COLOR,
+  DayChange,
   pnlClass,
   ScreenSkeleton,
 } from "@/components/portfolio/app-shell";
-import { ComboChart, Sparkline } from "@/components/portfolio/charts";
+import { ChartSurface, ComboChart, Sparkline } from "@/components/portfolio/charts";
+import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -21,6 +29,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { PeriodPicker } from "@/components/portfolio/period-picker";
+import { useOverlay } from "@/components/portfolio/overlay-context";
 import { usePortfolio } from "@/lib/data/use-portfolio";
 import { buildBuyEvents, buildTrend, toDateInput } from "@/lib/data/trend";
 import type { Holding, Period, PricePoint } from "@/lib/data/types";
@@ -60,13 +69,67 @@ const DASH_SUMMARY_KEY = "mystock.dash.summaryOpen";
 const DASH_TREND_KEY = "mystock.dash.trendOpen";
 const HOLDING_SORT_KEY = "mystock.holdingSort";
 
-type HoldingSort = "value" | "rate" | "price";
+type HoldingSort = "value" | "rate" | "price" | "change";
+type SortDir = "asc" | "desc";
 
 const HOLDING_SORTS: { id: HoldingSort; label: string }[] = [
   { id: "value", label: "평가금액" },
   { id: "rate", label: "수익률" },
   { id: "price", label: "현재가" },
+  { id: "change", label: "전일 대비" },
 ];
+
+function isHoldingSort(value: string): value is HoldingSort {
+  return HOLDING_SORTS.some((item) => item.id === value);
+}
+
+function parseHoldingSort(raw: string | null): { id: HoldingSort; dir: SortDir } {
+  if (!raw) {
+    return { id: "value", dir: "desc" };
+  }
+  const [id, dir] = raw.split(":");
+  return {
+    id: isHoldingSort(id) ? id : "value",
+    dir: dir === "asc" ? "asc" : "desc",
+  };
+}
+
+function dayChangePct(price: number, prevClose?: number) {
+  if (!prevClose || prevClose <= 0) {
+    return null;
+  }
+  return ((price - prevClose) / prevClose) * 100;
+}
+
+function compareHoldings(
+  a: Holding,
+  b: Holding,
+  sort: HoldingSort,
+  dir: SortDir,
+  quotes: Record<string, number>,
+  prevCloses: Record<string, number>,
+  usdKrw: number,
+) {
+  const aPrice = quotes[a.ticker] ?? a.buyPrice;
+  const bPrice = quotes[b.ticker] ?? b.buyPrice;
+  const aKrw = holdingToKrw(a, aPrice, usdKrw);
+  const bKrw = holdingToKrw(b, bPrice, usdKrw);
+  let delta = 0;
+  if (sort === "rate") {
+    delta = aKrw.rate - bKrw.rate;
+  } else if (sort === "price") {
+    const aKrwPrice = a.currency === "USD" ? aPrice * usdKrw : aPrice;
+    const bKrwPrice = b.currency === "USD" ? bPrice * usdKrw : bPrice;
+    delta = aKrwPrice - bKrwPrice;
+  } else if (sort === "change") {
+    const aChange = dayChangePct(aPrice, prevCloses[a.ticker]);
+    const bChange = dayChangePct(bPrice, prevCloses[b.ticker]);
+    delta = (aChange ?? Number.NEGATIVE_INFINITY) - (bChange ?? Number.NEGATIVE_INFINITY);
+  } else {
+    delta = aKrw.value - bKrw.value;
+  }
+  return dir === "asc" ? delta : -delta;
+}
 
 function useDashOpen(key: string) {
   const [open, setOpen] = useState(false);
@@ -106,20 +169,20 @@ function buyMarkRatio(series: PricePoint[], buy: string) {
 }
 
 export function HomeView() {
-  const router = useRouter();
+  const overlay = useOverlay();
   const portfolio = usePortfolio();
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
   const [period, setPeriod] = useState<Period>("1y");
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [summaryOpen, toggleSummary] = useDashOpen(DASH_SUMMARY_KEY);
   const [trendOpen, toggleTrend] = useDashOpen(DASH_TREND_KEY);
   const [holdingSort, setHoldingSort] = useState<HoldingSort>("value");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(HOLDING_SORT_KEY);
-    if (saved === "value" || saved === "rate" || saved === "price") {
-      setHoldingSort(saved);
-    }
+    const saved = parseHoldingSort(window.localStorage.getItem(HOLDING_SORT_KEY));
+    setHoldingSort(saved.id);
+    setSortDir(saved.dir);
   }, []);
 
   const {
@@ -131,9 +194,14 @@ export function HomeView() {
     quotesAsOf,
     fx,
     histories,
+    chartsLoading,
     loadCharts,
   } = portfolio;
-  const activeIds = selectedIds ?? accounts.map((item) => item.id);
+  const sortedAccounts = useMemo(
+    () => [...accounts].sort((a, b) => a.label.localeCompare(b.label, "ko")),
+    [accounts],
+  );
+  const activeIds = selectedIds ?? sortedAccounts.map((item) => item.id);
   const selected = new Set(activeIds);
   const allSelected =
     accounts.length > 0 && accounts.every((item) => selected.has(item.id));
@@ -153,7 +221,7 @@ export function HomeView() {
   const rate =
     totals.buy === 0 ? 0 : ((totals.value - totals.buy) / totals.buy) * 100;
   const pnl = totals.value - totals.buy;
-  const selectedAccounts = accounts.filter((item) => selected.has(item.id));
+  const selectedAccounts = sortedAccounts.filter((item) => selected.has(item.id));
   const accountMeta = {
     label:
       selectedAccounts.length === 0
@@ -173,26 +241,14 @@ export function HomeView() {
       0,
     );
   const usValue = totals.value - krValue;
-  const grouped = accounts
+  const grouped = sortedAccounts
     .filter((item) => selected.has(item.id))
     .map((broker) => {
       const items = rows
         .filter((row) => row.accountId === broker.id)
-        .sort((a, b) => {
-          const aPrice = quotes[a.ticker] ?? a.buyPrice;
-          const bPrice = quotes[b.ticker] ?? b.buyPrice;
-          const aKrw = holdingToKrw(a, aPrice, usdKrw);
-          const bKrw = holdingToKrw(b, bPrice, usdKrw);
-          if (holdingSort === "rate") {
-            return bKrw.rate - aKrw.rate;
-          }
-          if (holdingSort === "price") {
-            const aKrwPrice = a.currency === "USD" ? aPrice * usdKrw : aPrice;
-            const bKrwPrice = b.currency === "USD" ? bPrice * usdKrw : bPrice;
-            return bKrwPrice - aKrwPrice;
-          }
-          return bKrw.value - aKrw.value;
-        });
+        .sort((a, b) =>
+          compareHoldings(a, b, holdingSort, sortDir, quotes, prevCloses, usdKrw),
+        );
       const value = items.reduce(
         (sum, item) =>
           sum + holdingToKrw(item, quotes[item.ticker] ?? item.buyPrice, usdKrw).value,
@@ -256,7 +312,7 @@ export function HomeView() {
         <div className="flex flex-wrap items-center gap-1.5">
           <Button
             type="button"
-            size="sm"
+            size="xs"
             variant="outline"
             className={cn(
               "rounded-full border",
@@ -281,20 +337,20 @@ export function HomeView() {
               if (allSelected) {
                 setSelectedIds([]);
               } else {
-                setSelectedIds(accounts.map((item) => item.id));
+                setSelectedIds(sortedAccounts.map((item) => item.id));
               }
             }}
           >
             전체
           </Button>
-          {accounts.map((item) => {
+          {sortedAccounts.map((item) => {
             const on = selected.has(item.id);
             const color = ACCOUNT_COLOR[item.color];
             return (
               <Button
                 key={item.id}
                 type="button"
-                size="sm"
+                size="xs"
                 variant="outline"
                 className={cn(
                   "rounded-full border",
@@ -314,7 +370,7 @@ export function HomeView() {
                       }
                 }
                 onClick={() => {
-                  const current = selectedIds ?? accounts.map((row) => row.id);
+                  const current = selectedIds ?? sortedAccounts.map((row) => row.id);
                   setSelectedIds(
                     current.includes(item.id)
                       ? current.filter((id) => id !== item.id)
@@ -328,11 +384,11 @@ export function HomeView() {
           })}
           <Button
             type="button"
-            size="icon-sm"
+            size="icon-xs"
             variant="outline"
             className="rounded-full"
             title="계좌 추가"
-            onClick={() => router.push("/accounts/new")}
+            onClick={() => overlay.open({ m: "account-new" })}
           >
             <Plus />
           </Button>
@@ -468,12 +524,14 @@ export function HomeView() {
             {trendOpen ? (
               <CardContent className="space-y-3">
                 <PeriodPicker value={period} onChange={setPeriod} />
-                <ComboChart
-                  labels={trend.map((item) => item.label)}
-                  dates={trend.map((item) => item.date)}
-                  values={trend.map((item) => item.value)}
-                  buyEvents={buyEvents}
-                />
+                <ChartSurface period={period} loading={chartsLoading}>
+                  <ComboChart
+                    labels={trend.map((item) => item.label)}
+                    dates={trend.map((item) => item.date)}
+                    values={trend.map((item) => item.value)}
+                    buyEvents={buyEvents}
+                  />
+                </ChartSurface>
                 <p className="text-xs text-muted-foreground">
                   보유 수량 × 과거 종가 · 막대는 매수일 원화 금액 · 단위 만원
                 </p>
@@ -489,22 +547,40 @@ export function HomeView() {
               보유 종목
             </h2>
             {accounts.length > 0 ? (
-              <div className="ml-auto flex flex-wrap items-center gap-1">
-                {HOLDING_SORTS.map((item) => (
-                  <Button
-                    key={item.id}
-                    type="button"
-                    size="sm"
-                    variant={holdingSort === item.id ? "secondary" : "ghost"}
-                    className="h-7 px-2 text-xs"
-                    onClick={() => {
-                      setHoldingSort(item.id);
-                      window.localStorage.setItem(HOLDING_SORT_KEY, item.id);
-                    }}
-                  >
-                    {item.label}
-                  </Button>
-                ))}
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-0.5">
+                {HOLDING_SORTS.map((item) => {
+                  const active = holdingSort === item.id;
+                  const SortIcon =
+                    active && sortDir === "asc" ? ArrowUpNarrowWide : ArrowDownWideNarrow;
+                  return (
+                    <Button
+                      key={item.id}
+                      type="button"
+                      size="sm"
+                      variant={active ? "secondary" : "ghost"}
+                      className="h-7 gap-1 px-2 text-xs"
+                      onClick={() => {
+                        const nextDir =
+                          active ? (sortDir === "desc" ? "asc" : "desc") : "desc";
+                        const nextId = item.id;
+                        setHoldingSort(nextId);
+                        setSortDir(nextDir);
+                        window.localStorage.setItem(
+                          HOLDING_SORT_KEY,
+                          `${nextId}:${nextDir}`,
+                        );
+                      }}
+                    >
+                      {item.label}
+                      <SortIcon
+                        className={cn(
+                          "size-3.5",
+                          active ? "opacity-100" : "opacity-60",
+                        )}
+                      />
+                    </Button>
+                  );
+                })}
               </div>
             ) : null}
           </div>
@@ -521,7 +597,7 @@ export function HomeView() {
               <Button
                 type="button"
                 className="mt-5"
-                onClick={() => router.push("/accounts/new")}
+                onClick={() => overlay.open({ m: "account-new" })}
               >
                 계좌 추가
               </Button>
@@ -529,26 +605,26 @@ export function HomeView() {
           ) : null}
           {accounts.length > 0 && holdings.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              계좌 줄의 + 버튼으로 종목을 추가하세요.
+              계좌의 종목 추가로 종목을 넣으세요.
             </p>
           ) : null}
           {grouped.map((group) => {
-            const open = !collapsed[group.id];
+            const open = Boolean(expanded[group.id]);
             return (
-            <div key={group.id} className="space-y-1">
+            <div key={group.id}>
               <div
                 className="cursor-pointer rounded-lg px-3 py-2.5"
                 style={{
                   background: `color-mix(in oklch, ${ACCOUNT_COLOR[group.color]} 16%, var(--background))`,
                 }}
                 onClick={() =>
-                  setCollapsed((prev) => ({
+                  setExpanded((prev) => ({
                     ...prev,
                     [group.id]: !prev[group.id],
                   }))
                 }
               >
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2">
                   <ChevronDown
                     className={cn(
                       "size-4 shrink-0 text-muted-foreground transition-transform",
@@ -570,13 +646,31 @@ export function HomeView() {
                   <div className="flex shrink-0 items-center gap-1">
                     <Button
                       type="button"
-                      size="icon-sm"
-                      variant="outline"
-                      className="bg-background/30 hover:bg-background"
-                      title="계좌 이름 수정"
+                      size="sm"
+                      variant="secondary"
+                      className="h-7 px-2 text-xs"
+                      title="종목 추가"
                       onClick={(event) => {
                         event.stopPropagation();
-                        router.push(`/accounts/${group.id}/edit`);
+                        overlay.open({ m: "holding-new", accountId: group.id });
+                      }}
+                    >
+                      <Plus />
+                      종목 추가
+                    </Button>
+                    <Separator
+                      orientation="vertical"
+                      className="mx-1.5 h-5 bg-foreground/20"
+                    />
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="ghost"
+                      className="text-muted-foreground"
+                      title="계좌 수정"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        overlay.open({ m: "account-edit", id: group.id });
                       }}
                     >
                       <Pencil />
@@ -584,25 +678,12 @@ export function HomeView() {
                     <Button
                       type="button"
                       size="icon-sm"
-                      variant="outline"
-                      className="bg-background/30 hover:bg-background"
-                      title="종목 추가"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        router.push(`/holdings/new?accountId=${group.id}`);
-                      }}
-                    >
-                      <Plus />
-                    </Button>
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="outline"
-                      className="bg-background/30 hover:bg-background"
+                      variant="ghost"
+                      className="text-muted-foreground"
                       title="계좌 삭제"
                       onClick={(event) => {
                         event.stopPropagation();
-                        router.push(`/accounts/${group.id}/delete`);
+                        overlay.open({ m: "account-delete", id: group.id });
                       }}
                     >
                       <Trash2 />
@@ -628,30 +709,38 @@ export function HomeView() {
                   </div>
                 </div>
               </div>
-              {open ? (
-                group.items.length === 0 ? (
-                  <p className="px-3 py-4 text-sm text-muted-foreground">
-                    이 계좌에 종목이 없습니다. 계좌 줄의 +로 추가하세요.
-                  </p>
-                ) : (
-                  <div
-                    className="ml-2 divide-y border-l-2 pl-3 [&>*:last-child]:border-b"
-                    style={{ borderColor: ACCOUNT_COLOR[group.color] }}
-                  >
-                    {group.items.map((item) => (
-                      <HoldingRow
-                        key={item.id}
-                        item={item}
-                        period={period}
-                        quotes={quotes}
-                        prevClose={prevCloses[item.ticker]}
-                        histories={histories}
-                        usdKrw={usdKrw}
-                      />
-                    ))}
-                  </div>
-                )
-              ) : null}
+              <div
+                className={cn(
+                  "grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                  open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+                )}
+                aria-hidden={!open}
+              >
+                <div className="min-h-0 overflow-hidden" inert={!open || undefined}>
+                  {group.items.length === 0 ? (
+                    <p className="px-3 py-4 text-sm text-muted-foreground">
+                      이 계좌에 종목이 없습니다. 종목 추가로 넣으세요.
+                    </p>
+                  ) : (
+                    <div
+                      className="ml-2 divide-y border-l-2 pl-3 [&>*:last-child]:border-b"
+                      style={{ borderColor: ACCOUNT_COLOR[group.color] }}
+                    >
+                      {group.items.map((item) => (
+                        <HoldingRow
+                          key={item.id}
+                          item={item}
+                          period={period}
+                          quotes={quotes}
+                          prevClose={prevCloses[item.ticker]}
+                          histories={histories}
+                          usdKrw={usdKrw}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
             );
           })}
@@ -680,24 +769,21 @@ function HoldingRow({
   histories: Record<string, PricePoint[]>;
   usdKrw: number;
 }) {
-  const router = useRouter();
+  const overlay = useOverlay();
   const currentPrice = quotes[item.ticker] ?? item.buyPrice;
   const krw = holdingToKrw(item, currentPrice, usdKrw);
   const spark = sparkFor(item, period, quotes, histories);
-  const dayChange =
-    prevClose && prevClose > 0
-      ? ((currentPrice - prevClose) / prevClose) * 100
-      : null;
+  const dayChange = dayChangePct(currentPrice, prevClose);
 
   return (
     <div
       className="-mx-1 cursor-pointer rounded-lg px-1 py-4 hover:bg-muted/40"
       role="link"
       tabIndex={0}
-      onClick={() => router.push(`/holdings/${item.id}`)}
+      onClick={() => overlay.open({ m: "holding", id: item.id })}
       onKeyDown={(event) => {
         if (event.key === "Enter") {
-          router.push(`/holdings/${item.id}`);
+          overlay.open({ m: "holding", id: item.id });
         }
       }}
     >
@@ -714,14 +800,9 @@ function HoldingRow({
                 {item.lots.length}회 매수
               </>
             ) : null}
-            {dayChange != null ? (
-              <>
-                <span className="mx-1.5">·</span>
-                <span className={pnlClass(dayChange)}>당일 {formatPct(dayChange)}</span>
-              </>
-            ) : null}
           </p>
         </div>
+        <DayChange value={dayChange} className="shrink-0 pt-0.5" />
       </div>
 
       <div className="mt-3 flex items-center gap-2 sm:gap-3">

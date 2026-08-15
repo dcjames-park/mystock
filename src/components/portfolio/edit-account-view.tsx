@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
 import {
   AppShell,
   Field,
@@ -13,16 +12,17 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePortfolio } from "@/lib/data/use-portfolio";
+import { useOverlay, useRouteIds } from "@/components/portfolio/overlay-context";
 
 function sameAccountName(a: string, b: string) {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
 export function EditAccountView() {
-  const router = useRouter();
-  const params = useParams<{ id: string }>();
+  const overlay = useOverlay();
+  const { id } = useRouteIds();
   const { ready, accounts, updateAccount } = usePortfolio();
-  const account = accounts.find((item) => item.id === params.id);
+  const account = accounts.find((item) => item.id === id);
   const [name, setName] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +34,7 @@ export function EditAccountView() {
   if (!account) {
     return (
       <AppShell>
-        <ScreenHeader title="계좌 수정" onClose={() => router.push("/")} />
+        <ScreenHeader title="계좌 수정" dismiss />
         <p className="text-sm text-muted-foreground">계좌를 찾을 수 없습니다.</p>
       </AppShell>
     );
@@ -59,7 +59,7 @@ export function EditAccountView() {
     setPending(true);
     try {
       await updateAccount(accountId, label);
-      router.push("/");
+      overlay.close();
     } catch (err) {
       setError(err instanceof Error ? err.message : "수정에 실패했습니다.");
       setPending(false);
@@ -68,11 +68,7 @@ export function EditAccountView() {
 
   return (
     <AppShell>
-      <ScreenHeader
-        title="계좌 수정"
-        onClose={() => router.push("/")}
-        closeVariant="secondary"
-      />
+      <ScreenHeader title="계좌 수정" dismiss />
       <FormPanel>
         <Field label="계좌명">
           <Input

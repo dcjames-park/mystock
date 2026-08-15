@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { cachedChart } from "@/lib/market/cached";
 import type { Period } from "@/lib/data/types";
 
-const PERIODS: Period[] = ["1m", "6m", "1y", "2y", "5y"];
+const PERIODS: Period[] = ["1m", "6m", "1y", "2y", "5y", "10y"];
 
 export async function GET(request: NextRequest) {
   const ticker = request.nextUrl.searchParams.get("ticker") ?? "";

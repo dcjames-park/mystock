@@ -1,5 +1,11 @@
-import { EditHoldingView } from "@/components/portfolio/edit-holding-view";
+import { redirect } from "next/navigation";
+import { overlayHref } from "@/lib/overlay";
 
-export default function EditHoldingPage() {
-  return <EditHoldingView />;
+export default async function EditHoldingPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  redirect(overlayHref({ m: "holding-edit", id }));
 }

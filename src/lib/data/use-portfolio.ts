@@ -1,6 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { isLocalBackend, LOCAL_USER } from "@/lib/data/backend";
 import * as localStore from "@/lib/data/local-store";
 import * as supabaseStore from "@/lib/data/supabase-store";
@@ -50,7 +61,7 @@ function subscribeClient() {
   return () => {};
 }
 
-export function usePortfolio() {
+function usePortfolioState() {
   const local = isLocalBackend();
   const isClient = useSyncExternalStore(subscribeClient, () => true, () => false);
   const raw = useSyncExternalStore(
@@ -75,6 +86,7 @@ export function usePortfolio() {
   const [fx, setFx] = useState<FxQuote>(FALLBACK_FX);
   const [charts, setCharts] = useState<Record<string, number[]>>({});
   const [histories, setHistories] = useState<Record<string, PricePoint[]>>({});
+  const [chartPending, setChartPending] = useState(0);
 
   const parsed = useMemo(() => {
     if (!local || !raw) {
@@ -209,10 +221,10 @@ export function usePortfolio() {
         }
       }
       if (Object.keys(nextPrev).length > 0) {
-        setPrevCloses((prev) => {
-          const merged = { ...prev, ...nextPrev };
-          localStore.savePrevCloses(merged);
-          return merged;
+        setPrevCloses((prev) => ({ ...prev, ...nextPrev }));
+        localStore.savePrevCloses({
+          ...localStore.listPrevCloses(),
+          ...nextPrev,
         });
       }
       const asOf = new Date().toISOString();
@@ -259,6 +271,7 @@ export function usePortfolio() {
       for (const ticker of missing) {
         inflightCharts.current.add(`${ticker}:${period}`);
       }
+      setChartPending((count) => count + 1);
       try {
         const response = await fetch(
           `/api/market/charts?tickers=${encodeURIComponent(missing.join(","))}&period=${period}${
@@ -290,6 +303,7 @@ export function usePortfolio() {
         for (const ticker of missing) {
           inflightCharts.current.delete(`${ticker}:${period}`);
         }
+        setChartPending((count) => Math.max(0, count - 1));
       }
     },
     [],
@@ -717,6 +731,7 @@ export function usePortfolio() {
     refreshToken,
     fx,
     charts,
+    chartsLoading: chartPending > 0,
     histories,
     addAccount,
     updateAccount,
@@ -732,6 +747,27 @@ export function usePortfolio() {
     loadChart,
     loadCharts,
   };
+}
+
+const PortfolioContext = createContext<ReturnType<typeof usePortfolioState> | null>(
+  null,
+);
+
+export function PortfolioProvider({ children }: { children: ReactNode }) {
+  const value = usePortfolioState();
+  return createElement(PortfolioContext.Provider, { value }, children);
+}
+
+export function usePortfolio() {
+  const value = useContext(PortfolioContext);
+  if (!value) {
+    throw new Error("usePortfolio must be used within PortfolioProvider");
+  }
+  return value;
+}
+
+export function useOptionalPortfolio() {
+  return useContext(PortfolioContext);
 }
 
 export async function searchHoldings(query: string): Promise<SearchHit[]> {

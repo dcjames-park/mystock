@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
 import {
   AppShell,
   FormPanel,
@@ -11,13 +10,13 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { usePortfolio } from "@/lib/data/use-portfolio";
+import { useRouteIds } from "@/components/portfolio/overlay-context";
 import { fetchNaverHoldingName } from "@/lib/market/naver-name";
 
 export function EditHoldingView() {
-  const router = useRouter();
-  const params = useParams<{ id: string }>();
+  const { id } = useRouteIds();
   const { ready, holdings, updateHolding } = usePortfolio();
-  const holding = holdings.find((item) => item.id === params.id);
+  const holding = holdings.find((item) => item.id === id);
   const [name, setName] = useState<string | null>(null);
   const [namePending, setNamePending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +29,7 @@ export function EditHoldingView() {
   if (!holding) {
     return (
       <AppShell>
-        <ScreenHeader title="이름 수정" onClose={() => router.push("/")} />
+        <ScreenHeader title="이름 수정" />
         <p className="text-sm text-muted-foreground">종목을 찾을 수 없습니다.</p>
       </AppShell>
     );
@@ -63,7 +62,7 @@ export function EditHoldingView() {
 
   return (
     <AppShell>
-      <ScreenHeader title="이름 수정" onClose={() => router.push(`/holdings/${holdingId}`)} />
+      <ScreenHeader title="이름 수정" fallbackHref={`/holdings/${holdingId}`} />
       <FormPanel>
         <div className="mb-4">
           <p className="font-heading text-xl font-semibold leading-7">{displayName}</p>

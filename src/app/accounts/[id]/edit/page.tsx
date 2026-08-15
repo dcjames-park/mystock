@@ -1,5 +1,11 @@
-import { EditAccountView } from "@/components/portfolio/edit-account-view";
+import { redirect } from "next/navigation";
+import { overlayHref } from "@/lib/overlay";
 
-export default function EditAccountPage() {
-  return <EditAccountView />;
+export default async function EditAccountPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  redirect(overlayHref({ m: "account-edit", id }));
 }

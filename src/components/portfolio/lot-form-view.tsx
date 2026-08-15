@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
 import {
   AppShell,
   Field,
@@ -15,16 +14,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { AmountInput } from "@/components/portfolio/amount-input";
 import { usePortfolio } from "@/lib/data/use-portfolio";
+import { useOverlay, useRouteIds } from "@/components/portfolio/overlay-context";
 import { applyLotSummary } from "@/lib/data/lots";
 import { localDateStamp, toBoughtAt, toDateInput } from "@/lib/data/trend";
 import { formatPct, formatWon, holdingToKrw } from "@/lib/money";
 
 export function LotFormView({ mode }: { mode: "add" | "edit" }) {
-  const router = useRouter();
-  const params = useParams<{ id: string; lotId?: string }>();
+  const overlay = useOverlay();
+  const { id, lotId: routeLotId } = useRouteIds();
   const { ready, holdings, quotes, fx, addLot, updateLot } = usePortfolio();
-  const holding = holdings.find((item) => item.id === params.id);
-  const lot = holding?.lots.find((item) => item.id === params.lotId);
+  const holding = holdings.find((item) => item.id === id);
+  const lot = holding?.lots.find((item) => item.id === routeLotId);
   const [buy, setBuy] = useState("");
   const [qty, setQty] = useState("");
   const [boughtOn, setBoughtOn] = useState(localDateStamp);
@@ -74,8 +74,6 @@ export function LotFormView({ mode }: { mode: "add" | "edit" }) {
       <AppShell>
         <ScreenHeader
           title={mode === "add" ? "추가 매수" : "매수 수정"}
-          onClose={() => router.push("/")}
-          closeVariant="secondary"
         />
         <p className="text-sm text-muted-foreground">종목을 찾을 수 없습니다.</p>
       </AppShell>
@@ -109,7 +107,7 @@ export function LotFormView({ mode }: { mode: "add" | "edit" }) {
       } else {
         await addLot(holdingId, input);
       }
-      router.push(`/holdings/${holdingId}`);
+      overlay.close();
     } catch (err) {
       setError(err instanceof Error ? err.message : "저장에 실패했습니다.");
       setPending(false);
@@ -120,8 +118,7 @@ export function LotFormView({ mode }: { mode: "add" | "edit" }) {
     <AppShell>
       <ScreenHeader
         title={mode === "add" ? "추가 매수" : "매수 수정"}
-        onClose={() => router.push(`/holdings/${holdingId}`)}
-        closeVariant="secondary"
+        fallbackHref={`/holdings/${holdingId}`}
       />
       <div className="mb-4">
         <p className="font-heading text-xl font-semibold leading-7">{holding.name}</p>

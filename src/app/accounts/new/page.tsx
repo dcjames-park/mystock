@@ -1,5 +1,6 @@
-import { AddAccountView } from "@/components/portfolio/add-account-view";
+import { redirect } from "next/navigation";
+import { overlayHref } from "@/lib/overlay";
 
 export default function NewAccountPage() {
-  return <AddAccountView />;
+  redirect(overlayHref({ m: "account-new" }));
 }

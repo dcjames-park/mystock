@@ -1,18 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { AppShell, FormPanel, ScreenSkeleton } from "@/components/portfolio/app-shell";
+import { AppShell, FormPanel, ScreenHeader, ScreenSkeleton } from "@/components/portfolio/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { useOverlay, useRouteIds } from "@/components/portfolio/overlay-context";
 import { usePortfolio } from "@/lib/data/use-portfolio";
 
 export function DeleteAccountView() {
-  const router = useRouter();
-  const params = useParams<{ id: string }>();
+  const overlay = useOverlay();
+  const { id } = useRouteIds();
   const { ready, accounts, holdings, removeAccount } = usePortfolio();
-  const account = accounts.find((item) => item.id === params.id);
-  const holdingCount = holdings.filter((item) => item.accountId === params.id).length;
+  const account = accounts.find((item) => item.id === id);
+  const holdingCount = holdings.filter((item) => item.accountId === id).length;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,7 +23,8 @@ export function DeleteAccountView() {
   if (!account) {
     return (
       <AppShell>
-        <p className="pt-16 text-sm text-muted-foreground">계좌를 찾을 수 없습니다.</p>
+        <ScreenHeader title="계좌 삭제" dismiss />
+        <p className="text-sm text-muted-foreground">계좌를 찾을 수 없습니다.</p>
       </AppShell>
     );
   }
@@ -34,7 +35,7 @@ export function DeleteAccountView() {
     setPending(true);
     try {
       await removeAccount(accountId);
-      router.push("/");
+      overlay.closeToMain();
     } catch (err) {
       setError(err instanceof Error ? err.message : "삭제에 실패했습니다.");
       setPending(false);
@@ -43,7 +44,8 @@ export function DeleteAccountView() {
 
   return (
     <AppShell>
-      <FormPanel className="pt-12">
+      <ScreenHeader title="계좌 삭제" dismiss />
+      <FormPanel>
         <p className="text-xs font-medium text-primary">계좌 삭제</p>
         <p className="mt-2 font-heading text-[22px] font-semibold leading-7">
           {account.label}
@@ -70,7 +72,7 @@ export function DeleteAccountView() {
           >
             {pending ? "삭제 중..." : "삭제"}
           </Button>
-          <Button type="button" variant="ghost" onClick={() => router.push("/")}>
+          <Button type="button" variant="ghost" onClick={() => overlay.close()}>
             취소
           </Button>
         </div>
