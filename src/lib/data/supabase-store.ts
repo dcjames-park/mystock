@@ -63,10 +63,10 @@ export async function loadPortfolio() {
   }
 
   const [accountsRes, holdingsRes, lotsRes, snapshotsRes] = await Promise.all([
-    supabase.from("accounts").select("*").order("created_at"),
-    supabase.from("holdings").select("*").order("created_at"),
-    supabase.from("holding_lots").select("*").order("bought_at"),
-    supabase.from("valuation_snapshots").select("*").order("captured_at"),
+    supabase.from("accounts").select("*").order("created_at").limit(10000),
+    supabase.from("holdings").select("*").order("created_at").limit(10000),
+    supabase.from("holding_lots").select("*").order("bought_at").limit(10000),
+    supabase.from("valuation_snapshots").select("*").order("captured_at").limit(10000),
   ]);
 
   const lotsByHolding = new Map<string, HoldingLot[]>();

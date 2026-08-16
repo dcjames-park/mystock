@@ -73,7 +73,7 @@ export function LotFormView({ mode }: { mode: "add" | "edit" }) {
     return (
       <AppShell>
         <ScreenHeader
-          title={mode === "add" ? "추가 매수" : "매수 수정"}
+          title={mode === "add" ? "매수등록" : "매수 수정"}
           dismiss
         />
         <p className="text-sm text-muted-foreground">종목을 찾을 수 없습니다.</p>
@@ -83,6 +83,7 @@ export function LotFormView({ mode }: { mode: "add" | "edit" }) {
 
   const holdingId = holding.id;
   const lotId = lot?.id ?? "";
+  const usd = holding.currency === "USD";
 
   async function handleSave() {
     setError(null);
@@ -118,26 +119,26 @@ export function LotFormView({ mode }: { mode: "add" | "edit" }) {
   return (
     <AppShell>
       <ScreenHeader
-        title={mode === "add" ? "추가 매수" : "매수 수정"}
+        title={mode === "add" ? "매수등록" : "매수 수정"}
         fallbackHref={`/holdings/${holdingId}`}
         dismiss
       />
       <div className="mb-4">
         <p className="font-heading text-xl font-semibold leading-7">{holding.name}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          {holding.ticker} · {holding.market === "kr" ? "국내" : "해외"} · 이 종목에 매수
-          이력을 {mode === "add" ? "추가" : "수정"}합니다.
+          {holding.ticker} · {holding.market === "kr" ? "국내" : "해외"} · 이 종목에 매수를
+          {mode === "add" ? " 등록" : " 수정"}합니다.
         </p>
       </div>
       <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
         <div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label={`매수가 (${holding.currency === "USD" ? "달러" : "원"})`}>
+            <Field label={`매수가 (${usd ? "달러" : "원"})`}>
               <AmountInput
                 value={buy}
                 onChange={setBuy}
-                maxFraction={holding.currency === "USD" ? 2 : 0}
-                suffix={holding.currency === "USD" ? "달러" : "원"}
+                maxFraction={usd ? 2 : 0}
+                suffix={usd ? "달러" : "원"}
               />
             </Field>
             <Field label="수량">

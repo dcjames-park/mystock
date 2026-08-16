@@ -37,12 +37,8 @@ export function DeleteLotView() {
   async function handleConfirm() {
     setPending(true);
     try {
-      const result = await removeLot(holdingId, lotId);
-      if (result.removedHolding) {
-        overlay.closeToMain();
-      } else {
-        overlay.close();
-      }
+      await removeLot(holdingId, lotId);
+      overlay.close();
     } catch (err) {
       setError(err instanceof Error ? err.message : "삭제에 실패했습니다.");
       setPending(false);

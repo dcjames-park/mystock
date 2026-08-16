@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { EllipsisVertical, Pencil, Trash2 } from "lucide-react";
 import {
   ACCOUNT_COLOR,
   AppShell,
@@ -15,8 +15,13 @@ import {
 import { ChartSurface, ComboChart, Sparkline } from "@/components/portfolio/charts";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -101,6 +106,16 @@ export function HoldingDetailView() {
   const [period, setPeriod] = useState<Period>("1y");
   const [detail, setDetail] = useState<QuoteDetail | null>(null);
   const [naverUrl, setNaverUrl] = useState<string | null>(null);
+  const hadHolding = useRef(false);
+
+  useEffect(() => {
+    if (holding) {
+      hadHolding.current = true;
+    }
+    if (ready && hadHolding.current && !holding) {
+      overlay.close();
+    }
+  }, [holding, overlay, ready]);
 
   const currentPrice = holding
     ? (quotes[holding.ticker] ?? detail?.lastPrice ?? holding.buyPrice)
@@ -294,27 +309,36 @@ export function HoldingDetailView() {
               </Button>
             </div>
           </div>
-          <div className="flex shrink-0 items-center">
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              title="이름 수정"
-              className="text-cyan-600 hover:bg-cyan-600/10 hover:text-cyan-600 dark:text-cyan-400 dark:hover:bg-cyan-400/10 dark:hover:text-cyan-400"
-              onClick={() => overlay.open({ m: "holding-edit", id: holding.id })}
-            >
-              <Pencil />
-            </Button>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="destructive"
-              title="종목 삭제"
-              onClick={() => overlay.open({ m: "holding-delete", id: holding.id })}
-            >
-              <Trash2 />
-            </Button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className="shrink-0 text-muted-foreground"
+                title="종목 관리"
+              >
+                <EllipsisVertical />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="z-[80] w-auto min-w-36">
+              <DropdownMenuItem
+                onClick={() => overlay.open({ m: "holding-edit", id: holding.id })}
+              >
+                <Pencil />
+                종목명 업데이트
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() =>
+                  overlay.open({ m: "holding-delete", id: holding.id })
+                }
+              >
+                <Trash2 />
+                매수 이력 삭제
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <div className="grid min-w-0 gap-4 lg:grid-cols-2 lg:items-start">
@@ -402,6 +426,7 @@ export function HoldingDetailView() {
                 positive={krw.rate >= 0}
                 height={172}
                 showLegend
+                currency={holding.currency}
                 markRatio={
                   series.length > 1
                     ? (() => {
@@ -443,16 +468,6 @@ export function HoldingDetailView() {
         <Card>
           <CardHeader>
             <CardTitle>매수 이력</CardTitle>
-            <CardAction>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => overlay.open({ m: "lot-add", id: holding.id })}
-              >
-                <Plus data-icon="inline-start" />
-                추가
-              </Button>
-            </CardAction>
           </CardHeader>
           <CardContent className="overflow-x-auto px-0">
             <Table className="text-xs sm:text-sm">

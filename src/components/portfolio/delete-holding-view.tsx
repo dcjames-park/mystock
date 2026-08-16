@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AppShell, FormPanel, ScreenHeader, ScreenSkeleton } from "@/components/portfolio/app-shell";
+import { AppShell, FormPanel, OverlayCloseButton, ScreenHeader, ScreenSkeleton } from "@/components/portfolio/app-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useOverlay, useRouteIds } from "@/components/portfolio/overlay-context";
@@ -23,7 +23,7 @@ export function DeleteHoldingView() {
   if (!holding) {
     return (
       <AppShell>
-        <ScreenHeader title="종목 삭제" />
+        <ScreenHeader title="매수 이력 삭제" dismiss />
         <p className="text-sm text-muted-foreground">종목을 찾을 수 없습니다.</p>
       </AppShell>
     );
@@ -44,7 +44,7 @@ export function DeleteHoldingView() {
 
   return (
     <AppShell>
-      <ScreenHeader title="종목 삭제" />
+      <ScreenHeader title="매수 이력 삭제" dismiss />
       <FormPanel>
         <p className="text-xs text-muted-foreground">매도 · {account?.label ?? ""}</p>
         <p className="mt-2 font-heading text-[22px] font-semibold leading-7">
@@ -76,6 +76,7 @@ export function DeleteHoldingView() {
           </Button>
         </div>
       </FormPanel>
+      <OverlayCloseButton wide className="mt-6" />
     </AppShell>
   );
 }

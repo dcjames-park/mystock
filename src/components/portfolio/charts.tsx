@@ -3,7 +3,20 @@
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
+import type { Currency } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
+
+function formatSparkAxis(value: number, currency?: Currency) {
+  if (currency === "USD") {
+    const abs = Math.abs(value);
+    const digits = abs >= 1000 ? 0 : abs >= 100 ? 1 : abs >= 1 ? 2 : 4;
+    return value.toLocaleString("en-US", {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+  }
+  return Math.round(value).toLocaleString("ko-KR");
+}
 
 export function ComboChart({
   labels,
@@ -255,6 +268,7 @@ export function Sparkline({
   markRatio = null,
   buyPrice,
   showLegend = false,
+  currency,
 }: {
   values: number[];
   positive: boolean;
@@ -262,24 +276,114 @@ export function Sparkline({
   markRatio?: number | null;
   buyPrice?: number;
   showLegend?: boolean;
+  currency?: Currency;
 }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(360);
+
+  useEffect(() => {
+    if (!showLegend) {
+      return;
+    }
+    const node = hostRef.current;
+    if (!node) {
+      return;
+    }
+    const observer = new ResizeObserver((entries) => {
+      const next = Math.round(entries[0]?.contentRect.width ?? 0);
+      if (next > 0) {
+        setWidth(next);
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [showLegend]);
+
   if (values.length === 0) {
     return <div style={{ height }} />;
   }
-  const width = 320;
   const min = Math.min(...values, buyPrice ?? Infinity);
   const max = Math.max(...values, buyPrice ?? -Infinity);
   const span = Math.max(max - min, 1);
+  const color = positive ? "var(--gain)" : "var(--loss)";
+
+  if (!showLegend) {
+    const chartW = 320;
+    const xAt = (i: number) =>
+      values.length === 1 ? chartW / 2 : (i / (values.length - 1)) * chartW;
+    const yAt = (v: number) => height - ((v - min) / span) * (height - 6) - 3;
+    const line = values
+      .map((v, i) => `${i === 0 ? "M" : "L"}${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`)
+      .join(" ");
+    const area = `${line} L${xAt(values.length - 1).toFixed(1)},${height} L0,${height} Z`;
+    const markX =
+      markRatio == null ? null : Math.min(1, Math.max(0, markRatio)) * chartW;
+    const markY =
+      markX == null
+        ? null
+        : (() => {
+            const pos = markRatio! * Math.max(values.length - 1, 0);
+            const from = Math.floor(pos);
+            const to = Math.min(from + 1, values.length - 1);
+            const t = pos - from;
+            const price =
+              (values[from] ?? values[0]) * (1 - t) + (values[to] ?? values[from]) * t;
+            return yAt(price);
+          })();
+    const buyY = buyPrice == null ? null : yAt(buyPrice);
+    return (
+      <svg
+        viewBox={`0 0 ${chartW} ${height}`}
+        className="h-full w-full"
+        preserveAspectRatio="none"
+      >
+        <path d={area} fill={color} opacity={0.12} />
+        <path d={line} fill="none" stroke={color} strokeWidth={1.6} />
+        {buyY != null ? (
+          <line
+            x1={0}
+            x2={chartW}
+            y1={buyY}
+            y2={buyY}
+            stroke="var(--foreground)"
+            strokeOpacity={0.55}
+            strokeWidth={2}
+            strokeDasharray="3 2"
+          />
+        ) : null}
+        {markX != null && markY != null ? (
+          <>
+            <line
+              x1={markX}
+              x2={markX}
+              y1={2}
+              y2={height - 2}
+              stroke="var(--foreground)"
+              strokeOpacity={0.55}
+              strokeWidth={2}
+              strokeDasharray="3 2"
+            />
+            <circle cx={markX} cy={markY} r={5} fill="var(--foreground)" />
+          </>
+        ) : null}
+      </svg>
+    );
+  }
+
+  const pad = { l: 52, r: 8, t: 10, b: 10 };
+  const innerW = Math.max(width - pad.l - pad.r, 1);
+  const innerH = height - pad.t - pad.b;
   const xAt = (i: number) =>
-    values.length === 1 ? width / 2 : (i / (values.length - 1)) * width;
-  const yAt = (v: number) => height - ((v - min) / span) * (height - 6) - 3;
+    pad.l + (values.length === 1 ? innerW / 2 : (i / (values.length - 1)) * innerW);
+  const yAt = (v: number) => pad.t + innerH - ((v - min) / span) * innerH;
   const line = values
     .map((v, i) => `${i === 0 ? "M" : "L"}${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`)
     .join(" ");
-  const area = `${line} L${xAt(values.length - 1).toFixed(1)},${height} L0,${height} Z`;
-  const color = positive ? "var(--gain)" : "var(--loss)";
+  const area = `${line} L${xAt(values.length - 1).toFixed(1)},${pad.t + innerH} L${xAt(0).toFixed(1)},${pad.t + innerH} Z`;
   const markX =
-    markRatio == null ? null : Math.min(1, Math.max(0, markRatio)) * width;
+    markRatio == null
+      ? null
+      : pad.l + Math.min(1, Math.max(0, markRatio)) * innerW;
   const markY =
     markX == null
       ? null
@@ -288,75 +392,96 @@ export function Sparkline({
           const from = Math.floor(pos);
           const to = Math.min(from + 1, values.length - 1);
           const t = pos - from;
-          const price = (values[from] ?? values[0]) * (1 - t) + (values[to] ?? values[from]) * t;
+          const price =
+            (values[from] ?? values[0]) * (1 - t) + (values[to] ?? values[from]) * t;
           return yAt(price);
         })();
   const buyY = buyPrice == null ? null : yAt(buyPrice);
+  const ticks = min === max ? [min] : [min, (min + max) / 2, max];
 
-  const chart = (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className={showLegend ? "block w-full" : "h-full w-full"}
-      style={showLegend ? { height } : undefined}
-      preserveAspectRatio="none"
-    >
-      <path d={area} fill={color} opacity={0.12} />
-      <path d={line} fill="none" stroke={color} strokeWidth={1.6} />
-      {buyY != null ? (
-        <line
-          x1={0}
-          x2={width}
-          y1={buyY}
-          y2={buyY}
-          stroke="var(--foreground)"
-          strokeOpacity={0.55}
-          strokeWidth={2}
-          strokeDasharray="3 2"
-        />
-      ) : null}
-      {markX != null && markY != null ? (
-        <>
+  return (
+    <div ref={hostRef} className="w-full space-y-2">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="block w-full"
+        style={{ height }}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="주가 추세와 매수평균·매수일"
+      >
+        {ticks.map((tick, i) => (
           <line
-            x1={markX}
-            x2={markX}
-            y1={2}
-            y2={height - 2}
+            key={`g-${i}`}
+            x1={pad.l}
+            x2={width - pad.r}
+            y1={yAt(tick)}
+            y2={yAt(tick)}
+            stroke="var(--border)"
+            strokeWidth={1}
+          />
+        ))}
+        <path d={area} fill={color} opacity={0.12} />
+        <path d={line} fill="none" stroke={color} strokeWidth={1.6} />
+        {buyY != null ? (
+          <line
+            x1={pad.l}
+            x2={width - pad.r}
+            y1={buyY}
+            y2={buyY}
             stroke="var(--foreground)"
             strokeOpacity={0.55}
             strokeWidth={2}
             strokeDasharray="3 2"
           />
-          <circle
-            cx={markX}
-            cy={markY}
-            r={5}
-            fill="var(--foreground)"
-          />
-        </>
-      ) : null}
-    </svg>
-  );
-
-  if (!showLegend) {
-    return chart;
-  }
-
-  return (
-    <div className="w-full space-y-2">
-      {chart}
-      <div className="flex flex-wrap items-center gap-3.5 text-xs text-muted-foreground">
+        ) : null}
+        {markX != null && markY != null ? (
+          <>
+            <line
+              x1={markX}
+              x2={markX}
+              y1={pad.t}
+              y2={pad.t + innerH}
+              stroke="var(--foreground)"
+              strokeOpacity={0.55}
+              strokeWidth={2}
+              strokeDasharray="3 2"
+            />
+            <circle cx={markX} cy={markY} r={5} fill="var(--foreground)" />
+          </>
+        ) : null}
+        {ticks.map((tick, i) => (
+          <text
+            key={`vl-${i}`}
+            x={pad.l - 4}
+            y={yAt(tick) + 3}
+            textAnchor="end"
+            fill="var(--muted-foreground)"
+            fontSize={9}
+          >
+            {formatSparkAxis(tick, currency)}
+          </text>
+        ))}
+      </svg>
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className="h-0.5 w-3" style={{ background: color }} />
           주가
         </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-3 border-t-2 border-dashed border-foreground/55" />
-          매수평균
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-foreground/70" />
-          매수일
-        </span>
+        {buyY != null ? (
+          <span className="flex items-center gap-1.5">
+            <span className="h-px w-3 border-t-2 border-dashed border-foreground/55" />
+            매수평균
+          </span>
+        ) : null}
+        {markX != null ? (
+          <span className="flex items-center gap-1.5">
+            <span className="relative flex h-3 w-2.5 items-center justify-center">
+              <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 border-l-2 border-dashed border-foreground/55" />
+              <span className="relative size-1.5 rounded-full bg-foreground" />
+            </span>
+            매수일
+          </span>
+        ) : null}
       </div>
     </div>
   );

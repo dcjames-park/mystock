@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   AppShell,
   FormPanel,
+  OverlayCloseButton,
   ScreenHeader,
   ScreenSkeleton,
 } from "@/components/portfolio/app-shell";
@@ -29,7 +30,7 @@ export function EditHoldingView() {
   if (!holding) {
     return (
       <AppShell>
-        <ScreenHeader title="이름 수정" />
+        <ScreenHeader title="종목명 업데이트" dismiss />
         <p className="text-sm text-muted-foreground">종목을 찾을 수 없습니다.</p>
       </AppShell>
     );
@@ -62,13 +63,13 @@ export function EditHoldingView() {
 
   return (
     <AppShell>
-      <ScreenHeader title="이름 수정" fallbackHref={`/holdings/${holdingId}`} />
+      <ScreenHeader title="종목명 업데이트" dismiss />
       <FormPanel>
         <div className="mb-4">
           <p className="font-heading text-xl font-semibold leading-7">{displayName}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             {holding.ticker} · {holding.market === "kr" ? "국내" : "해외"} · 매수가와
-            수량은 종목 상세의 매수 이력에서 바꿉니다.
+            수량은 매수 이력에서 바꿉니다.
           </p>
           <Button
             type="button"
@@ -87,6 +88,7 @@ export function EditHoldingView() {
           </Alert>
         ) : null}
       </FormPanel>
+      <OverlayCloseButton wide className="mt-6" />
     </AppShell>
   );
 }

@@ -3,7 +3,8 @@ export type OverlayState =
   | { m: "holding-new"; accountId?: string }
   | { m: "holding-edit"; id: string }
   | { m: "holding-delete"; id: string }
-  | { m: "lot-add"; id: string }
+  | { m: "lots" }
+  | { m: "lot-add"; id?: string }
   | { m: "lot-edit"; id: string; lotId: string }
   | { m: "lot-delete"; id: string; lotId: string }
   | { m: "account-new" }
@@ -16,6 +17,7 @@ const MODES = new Set<OverlayState["m"]>([
   "holding-new",
   "holding-edit",
   "holding-delete",
+  "lots",
   "lot-add",
   "lot-edit",
   "lot-delete",
@@ -58,15 +60,18 @@ export function parseOverlaySearch(search: string): OverlayState | null {
     case "holding":
     case "holding-edit":
     case "holding-delete":
-    case "lot-add":
     case "account-edit":
     case "account-delete":
       return id ? ({ m, id } as OverlayState) : null;
+    case "lot-add":
+      return id ? { m: "lot-add", id } : { m: "lot-add" };
     case "lot-edit":
     case "lot-delete":
       return id && lotId ? ({ m, id, lotId } as OverlayState) : null;
     case "holding-new":
       return { m: "holding-new", accountId };
+    case "lots":
+      return { m: "lots" };
     case "account-new":
       return { m: "account-new" };
     case "settings":
@@ -77,5 +82,5 @@ export function parseOverlaySearch(search: string): OverlayState | null {
 }
 
 export function overlaySize(state: OverlayState | null): "page" | "form" {
-  return state?.m === "holding" ? "page" : "form";
+  return state?.m === "holding" || state?.m === "lots" ? "page" : "form";
 }

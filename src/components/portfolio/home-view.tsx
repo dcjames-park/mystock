@@ -7,6 +7,8 @@ import {
   ArrowUpNarrowWide,
   Check,
   ChevronDown,
+  History,
+  EllipsisVertical,
   Pencil,
   Plus,
   Trash2,
@@ -21,8 +23,13 @@ import {
   ScreenSkeleton,
 } from "@/components/portfolio/app-shell";
 import { ChartSurface, ComboChart, Sparkline } from "@/components/portfolio/charts";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Card,
   CardAction,
@@ -194,38 +201,52 @@ function HoldingSortBar({
   holdingSort,
   sortDir,
   onChange,
+  onAddHolding,
 }: {
   holdingSort: HoldingSort;
   sortDir: SortDir;
   onChange: (id: HoldingSort, dir: SortDir) => void;
+  onAddHolding: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-end gap-0.5 px-1 pt-2">
-      {HOLDING_SORTS.map((item) => {
-        const active = holdingSort === item.id;
-        const SortIcon =
-          active && sortDir === "asc" ? ArrowUpNarrowWide : ArrowDownWideNarrow;
-        return (
-          <Button
-            key={item.id}
-            type="button"
-            size="sm"
-            variant={active ? "secondary" : "ghost"}
-            className="h-7 gap-1 px-2 text-xs"
-            onClick={() => {
-              onChange(
-                item.id,
-                active ? (sortDir === "desc" ? "asc" : "desc") : "desc",
-              );
-            }}
-          >
-            {item.label}
-            <SortIcon
-              className={cn("size-3.5", active ? "opacity-100" : "opacity-60")}
-            />
-          </Button>
-        );
-      })}
+    <div className="flex flex-wrap items-center gap-1 px-1 pt-2">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
+        {HOLDING_SORTS.map((item) => {
+          const active = holdingSort === item.id;
+          const SortIcon =
+            active && sortDir === "asc" ? ArrowUpNarrowWide : ArrowDownWideNarrow;
+          return (
+            <Button
+              key={item.id}
+              type="button"
+              size="sm"
+              variant={active ? "secondary" : "ghost"}
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => {
+                onChange(
+                  item.id,
+                  active ? (sortDir === "desc" ? "asc" : "desc") : "desc",
+                );
+              }}
+            >
+              {item.label}
+              <SortIcon
+                className={cn("size-3.5", active ? "opacity-100" : "opacity-60")}
+              />
+            </Button>
+          );
+        })}
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        className="ml-auto h-7 gap-1 px-2 text-xs"
+        onClick={onAddHolding}
+      >
+        <Plus className="size-3.5" />
+        종목 추가
+      </Button>
     </div>
   );
 }
@@ -836,9 +857,20 @@ export function HomeView() {
         ) : null}
 
         <section className="space-y-5">
-          <h2 className="font-heading text-base font-medium sm:text-lg">
-            계좌별 종목
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="min-w-0 flex-1 font-heading text-base font-medium sm:text-lg">
+              계좌별 종목
+            </h2>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => overlay.open({ m: "lots" })}
+            >
+              <History data-icon="inline-start" />
+              매수 이력
+            </Button>
+          </div>
           {accounts.length === 0 ? (
             <div className="rounded-xl border border-dashed px-4 py-8 text-center">
               <p className="font-heading text-base font-medium">아직 계좌가 없습니다</p>
@@ -860,7 +892,7 @@ export function HomeView() {
           ) : null}
           {accounts.length > 0 && holdings.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              계좌의 종목 추가로 종목을 넣으세요.
+              계좌를 펼친 뒤 종목 추가로 넣으세요.
             </p>
           ) : null}
           {grouped.map((group) => {
@@ -895,52 +927,44 @@ export function HomeView() {
                       {group.label}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      className="h-7 px-2 text-xs"
-                      title="종목 추가"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        overlay.open({ m: "holding-new", accountId: group.id });
-                      }}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        className="text-muted-foreground"
+                        title="계좌 관리"
+                        onClick={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}
+                      >
+                        <EllipsisVertical />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="z-[80] w-auto min-w-32"
+                      onClick={(event) => event.stopPropagation()}
                     >
-                      <Plus />
-                      종목 추가
-                    </Button>
-                    <Separator
-                      orientation="vertical"
-                      className="mx-1.5 h-5 bg-foreground/20"
-                    />
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="ghost"
-                      className="text-muted-foreground"
-                      title="계좌 수정"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        overlay.open({ m: "account-edit", id: group.id });
-                      }}
-                    >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="ghost"
-                      className="text-muted-foreground"
-                      title="계좌 삭제"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        overlay.open({ m: "account-delete", id: group.id });
-                      }}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          overlay.open({ m: "account-edit", id: group.id })
+                        }
+                      >
+                        <Pencil />
+                        계좌명 수정
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() =>
+                          overlay.open({ m: "account-delete", id: group.id })
+                        }
+                      >
+                        <Trash2 />
+                        계좌 삭제
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
                 <div className="mt-2 grid grid-cols-3 gap-3 pl-10">
                   <div>
@@ -969,41 +993,42 @@ export function HomeView() {
                 aria-hidden={!open}
               >
                 <div className="min-h-0 overflow-hidden" inert={!open || undefined}>
+                  <HoldingSortBar
+                    holdingSort={holdingSort}
+                    sortDir={sortDir}
+                    onAddHolding={() =>
+                      overlay.open({ m: "holding-new", accountId: group.id })
+                    }
+                    onChange={(id, dir) => {
+                      setHoldingSort(id);
+                      setSortDir(dir);
+                      window.localStorage.setItem(
+                        HOLDING_SORT_KEY,
+                        `${id}:${dir}`,
+                      );
+                    }}
+                  />
                   {group.items.length === 0 ? (
                     <p className="px-3 py-4 text-sm text-muted-foreground">
                       이 계좌에 종목이 없습니다. 종목 추가로 넣으세요.
                     </p>
                   ) : (
-                    <>
-                      <HoldingSortBar
-                        holdingSort={holdingSort}
-                        sortDir={sortDir}
-                        onChange={(id, dir) => {
-                          setHoldingSort(id);
-                          setSortDir(dir);
-                          window.localStorage.setItem(
-                            HOLDING_SORT_KEY,
-                            `${id}:${dir}`,
-                          );
-                        }}
-                      />
-                      <div
-                        className="ml-2 divide-y border-l-2 pl-3 [&>*:last-child]:border-b"
-                        style={{ borderColor: ACCOUNT_COLOR[group.color] }}
-                      >
-                        {group.items.map((item) => (
-                          <HoldingRow
-                            key={item.id}
-                            item={item}
-                            period={period}
-                            quotes={quotes}
-                            prevClose={prevCloses[item.ticker]}
-                            histories={histories}
-                            usdKrw={usdKrw}
-                          />
-                        ))}
-                      </div>
-                    </>
+                    <div
+                      className="ml-2 divide-y border-l-2 pl-3 [&>*:last-child]:border-b"
+                      style={{ borderColor: ACCOUNT_COLOR[group.color] }}
+                    >
+                      {group.items.map((item) => (
+                        <HoldingRow
+                          key={item.id}
+                          item={item}
+                          period={period}
+                          quotes={quotes}
+                          prevClose={prevCloses[item.ticker]}
+                          histories={histories}
+                          usdKrw={usdKrw}
+                        />
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>

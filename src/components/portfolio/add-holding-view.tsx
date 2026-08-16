@@ -110,7 +110,7 @@ export function AddHoldingView() {
     }
     const alreadyHeld = heldInAccount.find((item) => item.ticker === selected.ticker);
     if (alreadyHeld) {
-      setError("이미 보유 중인 종목입니다. 종목 상세에서 매수를 추가해 주세요.");
+      setError("이미 보유 중인 종목입니다. 매수 추가에서 이어서 등록해 주세요.");
       return;
     }
     const buy = Number(buyPrice);
@@ -266,8 +266,8 @@ export function AddHoldingView() {
               <AlertTitle>이미 보유 중인 종목입니다</AlertTitle>
               <AlertDescription>
                 {currentAccount?.label ?? "이 계좌"}에 등록된 종목입니다. 여기서는 새
-                종목만 추가할 수 있습니다. 추가 매수는 종목 상세의 매수 이력에서
-                등록하세요.
+                종목만 추가할 수 있습니다. 추가 매수는 아래 매수 추가로
+                이어서 등록하세요.
               </AlertDescription>
             </Alert>
             <Button
@@ -275,7 +275,7 @@ export function AddHoldingView() {
               variant="outline"
               onClick={() => overlay.open({ m: "lot-add", id: existingHolding.id })}
             >
-              종목 상세에서 매수 추가
+              매수 추가
             </Button>
           </>
         ) : (

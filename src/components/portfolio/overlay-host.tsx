@@ -10,6 +10,7 @@ import { EditAccountView } from "@/components/portfolio/edit-account-view";
 import { EditHoldingView } from "@/components/portfolio/edit-holding-view";
 import { HoldingDetailView } from "@/components/portfolio/holding-detail-view";
 import { LotFormView } from "@/components/portfolio/lot-form-view";
+import { LotsView } from "@/components/portfolio/lots-view";
 import {
   OverlayPanel,
   overlaySize,
@@ -27,10 +28,13 @@ export function OverlayHost() {
     <OverlayPanel size={overlaySize(state)}>
       <div key={overlayHref(state)}>
         {state.m === "holding" ? <HoldingDetailView /> : null}
+        {state.m === "lots" ? <LotsView /> : null}
         {state.m === "holding-new" ? <AddHoldingView /> : null}
         {state.m === "holding-edit" ? <EditHoldingView /> : null}
         {state.m === "holding-delete" ? <DeleteHoldingView /> : null}
-        {state.m === "lot-add" ? <LotFormView mode="add" /> : null}
+        {state.m === "lot-add" ? (
+          state.id ? <LotFormView mode="add" /> : <AddHoldingView />
+        ) : null}
         {state.m === "lot-edit" ? <LotFormView mode="edit" /> : null}
         {state.m === "lot-delete" ? <DeleteLotView /> : null}
         {state.m === "account-new" ? <AddAccountView /> : null}
