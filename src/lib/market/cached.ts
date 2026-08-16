@@ -84,7 +84,7 @@ export async function cachedCharts(
   const charts: Record<string, CachedChart> = {};
   const missing: string[] = [];
   for (const ticker of unique) {
-    const hit = cacheGet<CachedChart>(`chart:${ticker}:${period}`);
+    const hit = cacheGet<CachedChart>(`chart:v2:${ticker}:${period}`);
     if (hit && !options?.fresh) {
       charts[ticker] = hit;
     } else {
@@ -96,7 +96,7 @@ export async function cachedCharts(
   }
   const fetched = await chartManyYahoo(missing, period);
   for (const item of fetched) {
-    cacheSet(`chart:${item.ticker}:${period}`, item, CHART_TTL_MS);
+    cacheSet(`chart:v2:${item.ticker}:${period}`, item, CHART_TTL_MS);
     charts[item.ticker] = item;
   }
   return charts;

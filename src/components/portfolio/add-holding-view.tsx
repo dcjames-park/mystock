@@ -110,7 +110,7 @@ export function AddHoldingView() {
     }
     const alreadyHeld = heldInAccount.find((item) => item.ticker === selected.ticker);
     if (alreadyHeld) {
-      setError("이미 보유 중인 종목입니다. 매수 추가에서 이어서 등록해 주세요.");
+      setError("이미 등록된 종목입니다. 종목 상세에서 추가 매수를 등록해 주세요.");
       return;
     }
     const buy = Number(buyPrice);
@@ -152,7 +152,7 @@ export function AddHoldingView() {
 
   return (
     <AppShell>
-      <ScreenHeader title="종목 추가" dismiss />
+      <ScreenHeader title="신규 매수" dismiss />
       <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
         <div className="flex flex-col gap-4">
         <Field label="계좌">
@@ -226,26 +226,16 @@ export function AddHoldingView() {
                       <p className="text-xs text-muted-foreground">
                         {item.ticker} · {item.market === "kr" ? "국내" : "해외"} ·{" "}
                         {item.kind === "etf" ? "ETF" : "주식"}
-                        {held ? " · 보유 중" : null}
+                        {held ? " · 등록됨" : null}
                       </p>
                     </div>
-                    {held ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => overlay.open({ m: "lot-add", id: held.id })}
-                      >
-                        매수 추가
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => handleSelect(item)}
-                      >
-                        선택
-                      </Button>
-                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => handleSelect(item)}
+                    >
+                      선택
+                    </Button>
                   </div>
                   <Separator />
                 </div>
@@ -263,19 +253,18 @@ export function AddHoldingView() {
         {existingHolding ? (
           <>
             <Alert>
-              <AlertTitle>이미 보유 중인 종목입니다</AlertTitle>
+              <AlertTitle>이미 등록된 종목입니다</AlertTitle>
               <AlertDescription>
-                {currentAccount?.label ?? "이 계좌"}에 등록된 종목입니다. 여기서는 새
-                종목만 추가할 수 있습니다. 추가 매수는 아래 매수 추가로
-                이어서 등록하세요.
+                {currentAccount?.label ?? "이 계좌"}에 이미 등록된 종목입니다. 추가 매수는
+                종목 상세 화면의 매수 이력에서 등록할 수 있습니다.
               </AlertDescription>
             </Alert>
             <Button
               type="button"
               variant="outline"
-              onClick={() => overlay.open({ m: "lot-add", id: existingHolding.id })}
+              onClick={() => overlay.open({ m: "holding", id: existingHolding.id })}
             >
-              매수 추가
+              종목 상세 보기
             </Button>
           </>
         ) : (

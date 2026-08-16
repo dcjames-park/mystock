@@ -2,36 +2,131 @@ import { qtyOnDate } from "@/lib/data/lots";
 import type { Holding, Period, PeriodPoint, PricePoint } from "@/lib/data/types";
 import { toKrwAmount } from "@/lib/money";
 
-const TREND_POINTS = 8;
-
 function formatLabel(date: string, period: Period) {
   const [year, month, day] = date.split("-").map(Number);
   const yy = (year ?? 0) % 100;
-  if (period === "1m") {
+  if (period === "1m" || period === "6m") {
     return `${month}/${day}`;
-  }
-  if (period === "6m") {
-    return `${month}월`;
   }
   return `${yy}.${month}`;
 }
 
-function downsampleTrend(points: PeriodPoint[], count: number) {
-  if (points.length <= count) {
-    return points;
+function addDays(date: string, days: number) {
+  const [year, month, day] = date.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day + days));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
+}
+
+function addMonths(date: string, months: number) {
+  const [year, month, day] = date.split("-").map(Number);
+  const total = year * 12 + (month - 1) + months;
+  const nextYear = Math.floor(total / 12);
+  const nextMonth = (total % 12) + 1;
+  const lastDay = new Date(Date.UTC(nextYear, nextMonth, 0)).getUTCDate();
+  const nextDay = Math.min(day, lastDay);
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(nextDay).padStart(2, "0")}`;
+}
+
+function nextGridDate(date: string, period: Period) {
+  if (period === "1m") {
+    return addDays(date, 2);
   }
-  const out: PeriodPoint[] = [];
-  const step = (points.length - 1) / (count - 1);
-  for (let i = 0; i < count; i += 1) {
-    const from = i === 0 ? 0 : Math.round((i - 1) * step) + 1;
-    const to = Math.round(i * step);
-    const last = points[to] ?? points[points.length - 1];
-    const buy = points
-      .slice(from, to + 1)
-      .reduce((sum, point) => sum + point.buy, 0);
-    out.push({ ...last, buy });
+  if (period === "6m") {
+    return addDays(date, 14);
+  }
+  if (period === "1y") {
+    return addMonths(date, 1);
+  }
+  if (period === "2y") {
+    return addMonths(date, 2);
+  }
+  if (period === "5y") {
+    return addMonths(date, 3);
+  }
+  return addMonths(date, 6);
+}
+
+function buildGrid(start: string, end: string, period: Period) {
+  if (start >= end) {
+    return [end];
+  }
+  const out: string[] = [start];
+  let cursor = start;
+  for (let i = 0; i < 400; i += 1) {
+    const next = nextGridDate(cursor, period);
+    if (next <= cursor || next >= end) {
+      break;
+    }
+    out.push(next);
+    cursor = next;
+  }
+  if (out[out.length - 1] !== end) {
+    out.push(end);
   }
   return out;
+}
+
+function pointOnOrBefore(points: PeriodPoint[], date: string) {
+  let last: PeriodPoint | null = null;
+  for (const point of points) {
+    if (point.date > date) {
+      break;
+    }
+    last = point;
+  }
+  return last;
+}
+
+function resampleTrend(points: PeriodPoint[], period: Period) {
+  if (points.length <= 1) {
+    return points;
+  }
+  const start = points[0].date;
+  const end = points[points.length - 1].date;
+  const out: PeriodPoint[] = [];
+  const seen = new Set<string>();
+  for (const date of buildGrid(start, end, period)) {
+    const src = pointOnOrBefore(points, date);
+    if (!src || seen.has(date)) {
+      continue;
+    }
+    seen.add(date);
+    out.push({
+      ...src,
+      date,
+      label: formatLabel(date, period),
+    });
+  }
+  return out;
+}
+
+function insertDates(
+  sampled: PeriodPoint[],
+  daily: PeriodPoint[],
+  extraDates: string[],
+  period: Period,
+) {
+  if (extraDates.length === 0 || daily.length === 0) {
+    return sampled;
+  }
+  const start = daily[0].date;
+  const end = daily[daily.length - 1].date;
+  const byDate = new Map(sampled.map((point) => [point.date, point]));
+  for (const date of extraDates) {
+    if (date < start || date > end || byDate.has(date)) {
+      continue;
+    }
+    const src = pointOnOrBefore(daily, date);
+    if (!src) {
+      continue;
+    }
+    byDate.set(date, {
+      ...src,
+      date,
+      label: formatLabel(date, period),
+    });
+  }
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export function buildTrend({
@@ -41,6 +136,7 @@ export function buildTrend({
   seriesByTicker,
   quotes,
   usdKrw,
+  extraDates = [],
 }: {
   period: Period;
   accountId: string | null;
@@ -48,6 +144,7 @@ export function buildTrend({
   seriesByTicker: Record<string, PricePoint[]>;
   quotes: Record<string, number>;
   usdKrw: number;
+  extraDates?: string[];
 }): PeriodPoint[] {
   const relevant = holdings.filter(
     (item) => accountId === null || item.accountId === accountId,
@@ -57,6 +154,14 @@ export function buildTrend({
   for (const item of relevant) {
     for (const point of seriesByTicker[item.ticker] ?? []) {
       dateSet.add(point.date);
+    }
+  }
+  const seriesDates = [...dateSet].sort();
+  const rangeStart = seriesDates[0];
+  const rangeEnd = seriesDates[seriesDates.length - 1];
+  for (const date of extraDates) {
+    if (rangeStart && rangeEnd && date >= rangeStart && date <= rangeEnd) {
+      dateSet.add(date);
     }
   }
   const dates = [...dateSet].sort();
@@ -127,7 +232,8 @@ export function buildTrend({
     });
   }
 
-  return downsampleTrend(daily, TREND_POINTS);
+  const sampled = resampleTrend(daily, period);
+  return insertDates(sampled, daily, extraDates, period);
 }
 
 export function localDateStamp(value = new Date()) {

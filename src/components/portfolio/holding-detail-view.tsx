@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { EllipsisVertical, Pencil, Trash2 } from "lucide-react";
+import { EllipsisVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   ACCOUNT_COLOR,
   AppShell,
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -155,8 +156,14 @@ export function HoldingDetailView() {
       seriesByTicker: { [holding.ticker]: series },
       quotes,
       usdKrw: fx.usdKrw,
+      extraDates: [toDateInput(holding.boughtAt)],
     });
   }, [fx.usdKrw, holding, period, quotes, series]);
+
+  const buyDate = holding ? toDateInput(holding.boughtAt) : "";
+  const seriesStart = series[0]?.date ?? trend[0]?.date;
+  const seriesEnd =
+    series[series.length - 1]?.date ?? trend[trend.length - 1]?.date;
 
   const buyEvents = useMemo(() => {
     if (!holding) {
@@ -423,24 +430,16 @@ export function HoldingDetailView() {
             <ChartSurface period={period} loading={chartsLoading}>
               <Sparkline
                 values={series.map((item) => item.close)}
+                dates={series.map((item) => item.date)}
+                labels={trend.map((item) => item.label)}
+                labelDates={trend.map((item) => item.date)}
+                rangeStart={seriesStart}
+                rangeEnd={seriesEnd}
+                markDate={buyDate || undefined}
                 positive={krw.rate >= 0}
                 height={172}
                 showLegend
                 currency={holding.currency}
-                markRatio={
-                  series.length > 1
-                    ? (() => {
-                        const buy = toDateInput(holding.boughtAt);
-                        const first = series[0]?.date;
-                        const last = series[series.length - 1]?.date;
-                        if (!first || !last || buy < first || buy > last) {
-                          return null;
-                        }
-                        const index = series.findIndex((item) => item.date >= buy);
-                        return index < 0 ? null : index / (series.length - 1);
-                      })()
-                    : null
-                }
                 buyPrice={holding.buyPrice}
               />
             </ChartSurface>
@@ -451,6 +450,9 @@ export function HoldingDetailView() {
                 values={trend.map((item) => item.value)}
                 rates={trend.map((item) => item.rate)}
                 buyEvents={buyEvents}
+                rangeStart={seriesStart}
+                rangeEnd={seriesEnd}
+                lineStartDate={buyDate || undefined}
               />
             </ChartSurface>
             <p className="text-xs text-muted-foreground">
@@ -469,6 +471,18 @@ export function HoldingDetailView() {
         <Card>
           <CardHeader>
             <CardTitle>매수 이력</CardTitle>
+            <CardAction>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={() => overlay.open({ m: "lot-add", id: holding.id })}
+              >
+                <Plus className="size-3.5" />
+                추가 매수
+              </Button>
+            </CardAction>
           </CardHeader>
           <CardContent className="overflow-x-auto px-0">
             <Table className="text-xs sm:text-sm">

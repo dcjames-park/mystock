@@ -245,7 +245,7 @@ function HoldingSortBar({
         onClick={onAddHolding}
       >
         <Plus className="size-3.5" />
-        종목 추가
+        신규 매수
       </Button>
     </div>
   );
@@ -845,6 +845,11 @@ export function HomeView() {
                     values={trend.map((item) => item.value)}
                     rates={trend.map((item) => item.rate)}
                     buyEvents={buyEvents}
+                    lineStartDate={
+                      visibleHoldings
+                        .map((item) => toDateInput(item.boughtAt))
+                        .sort()[0]
+                    }
                   />
                 </ChartSurface>
                 <p className="text-xs text-muted-foreground">
@@ -879,7 +884,7 @@ export function HomeView() {
               </p>
               <ol className="mx-auto mt-4 max-w-xs space-y-1 text-left text-sm text-muted-foreground">
                 <li>1. 계좌 추가</li>
-                <li>2. 종목 추가</li>
+                <li>2. 신규 매수</li>
               </ol>
               <Button
                 type="button"
@@ -892,7 +897,7 @@ export function HomeView() {
           ) : null}
           {accounts.length > 0 && holdings.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              계좌를 펼친 뒤 종목 추가로 넣으세요.
+              계좌를 펼친 뒤 신규 매수로 넣으세요.
             </p>
           ) : null}
           {grouped.map((group) => {
@@ -1010,7 +1015,7 @@ export function HomeView() {
                   />
                   {group.items.length === 0 ? (
                     <p className="px-3 py-4 text-sm text-muted-foreground">
-                      이 계좌에 종목이 없습니다. 종목 추가로 넣으세요.
+                      이 계좌에 종목이 없습니다. 신규 매수로 넣으세요.
                     </p>
                   ) : (
                     <div

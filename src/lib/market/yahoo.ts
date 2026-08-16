@@ -400,6 +400,57 @@ export async function quoteSnapshotYahoo(tickers: string[]) {
   };
 }
 
+function wantsMonthly(period: Period) {
+  return period === "5y" || period === "10y";
+}
+
+function yearMonths(startYm: string, endYm: string) {
+  const out: string[] = [];
+  let year = Number(startYm.slice(0, 4));
+  let month = Number(startYm.slice(5, 7));
+  const endYear = Number(endYm.slice(0, 4));
+  const endMonth = Number(endYm.slice(5, 7));
+  while (year < endYear || (year === endYear && month <= endMonth)) {
+    out.push(`${year}-${String(month).padStart(2, "0")}`);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return out;
+}
+
+function fillMonthlyPrices(series: PricePoint[]): PricePoint[] {
+  if (series.length === 0) {
+    return series;
+  }
+  const byMonth = new Map<string, PricePoint>();
+  for (const point of series) {
+    byMonth.set(point.date.slice(0, 7), point);
+  }
+  const months = yearMonths(
+    series[0].date.slice(0, 7),
+    series[series.length - 1].date.slice(0, 7),
+  );
+  const out: PricePoint[] = [];
+  let lastClose = series[0].close;
+  for (const month of months) {
+    const hit = byMonth.get(month);
+    if (hit) {
+      lastClose = hit.close;
+      out.push(hit);
+    } else {
+      out.push({ date: `${month}-01`, close: lastClose });
+    }
+  }
+  return out;
+}
+
+function withPeriodSeries(series: PricePoint[], period: Period) {
+  return wantsMonthly(period) ? fillMonthlyPrices(series) : series;
+}
+
 export async function chartManyYahoo(tickers: string[], period: Period) {
   const unique = [...new Set(tickers.filter(Boolean))];
   if (unique.length === 0) {
@@ -410,27 +461,32 @@ export async function chartManyYahoo(tickers: string[], period: Period) {
     string,
     { ticker: string; prices: number[]; series: PricePoint[]; lastPrice: number | null }
   >();
-  try {
-    for (let i = 0; i < unique.length; i += SPARK_BATCH) {
-      const batch = unique.slice(i, i + SPARK_BATCH);
-      const url = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${encodeURIComponent(batch.join(","))}&range=${spec.range}&interval=${spec.interval}`;
-      const data = await yahooJson(url);
-      for (const ticker of batch) {
-        const series = seriesFromSpark(sparkRowByTicker(data, ticker));
-        if (series.length === 0) {
-          continue;
+  if (!wantsMonthly(period)) {
+    try {
+      for (let i = 0; i < unique.length; i += SPARK_BATCH) {
+        const batch = unique.slice(i, i + SPARK_BATCH);
+        const url = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${encodeURIComponent(batch.join(","))}&range=${spec.range}&interval=${spec.interval}`;
+        const data = await yahooJson(url);
+        for (const ticker of batch) {
+          const series = withPeriodSeries(
+            seriesFromSpark(sparkRowByTicker(data, ticker)),
+            period,
+          );
+          if (series.length === 0) {
+            continue;
+          }
+          const prices = series.map((item) => item.close);
+          found.set(ticker, {
+            ticker,
+            prices: downsample(prices, 6),
+            series,
+            lastPrice: prices.at(-1) ?? null,
+          });
         }
-        const prices = series.map((item) => item.close);
-        found.set(ticker, {
-          ticker,
-          prices: downsample(prices, 6),
-          series,
-          lastPrice: prices.at(-1) ?? null,
-        });
       }
+    } catch {
+      found.clear();
     }
-  } catch {
-    found.clear();
   }
 
   const missing = unique.filter((ticker) => !found.has(ticker));
@@ -508,11 +564,12 @@ export async function chartYahoo(ticker: string, period: Period) {
       close,
     });
   }
-  const prices = series.map((item) => item.close);
+  const filled = withPeriodSeries(series, period);
+  const prices = filled.map((item) => item.close);
   const lastPrice = Number(result?.meta?.regularMarketPrice) || prices.at(-1) || null;
   return {
     prices: downsample(prices, 6),
-    series,
+    series: filled,
     lastPrice,
   };
 }

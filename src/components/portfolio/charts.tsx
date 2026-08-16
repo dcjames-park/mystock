@@ -6,31 +6,90 @@ import { Loader2 } from "lucide-react";
 import type { Currency } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
 
-function smoothLinePath(xs: number[], ys: number[]) {
+const CHART_PAD = { l: 52, r: 36, t: 10, b: 22 };
+const MAX_AXIS_LABELS = 8;
+const DOT_LIMIT = 24;
+
+function axisIndexes(count: number, max = MAX_AXIS_LABELS) {
+  if (count <= 0) {
+    return [];
+  }
+  if (count <= max) {
+    return Array.from({ length: count }, (_, i) => i);
+  }
+  const out: number[] = [];
+  const step = (count - 1) / (max - 1);
+  for (let i = 0; i < max; i += 1) {
+    out.push(Math.round(i * step));
+  }
+  return [...new Set(out)];
+}
+
+function linePath(xs: number[], ys: number[]) {
   const n = xs.length;
   if (n === 0 || n !== ys.length) {
     return "";
   }
   const pt = (x: number, y: number) => `${x.toFixed(1)},${y.toFixed(1)}`;
-  if (n === 1) {
-    return `M${pt(xs[0], ys[0])}`;
-  }
-  if (n === 2) {
-    return `M${pt(xs[0], ys[0])} L${pt(xs[1], ys[1])}`;
-  }
   let d = `M${pt(xs[0], ys[0])}`;
-  for (let i = 0; i < n - 1; i += 1) {
-    const x0 = xs[i - 1] ?? xs[i];
-    const y0 = ys[i - 1] ?? ys[i];
-    const x1 = xs[i];
-    const y1 = ys[i];
-    const x2 = xs[i + 1];
-    const y2 = ys[i + 1];
-    const x3 = xs[i + 2] ?? x2;
-    const y3 = ys[i + 2] ?? y2;
-    d += ` C${pt(x1 + (x2 - x0) / 6, y1 + (y2 - y0) / 6)} ${pt(x2 - (x3 - x1) / 6, y2 - (y3 - y1) / 6)} ${pt(x2, y2)}`;
+  for (let i = 1; i < n; i += 1) {
+    d += ` L${pt(xs[i], ys[i])}`;
   }
   return d;
+}
+
+function dateToX(
+  date: string,
+  start: number,
+  end: number,
+  padL: number,
+  innerW: number,
+) {
+  const time = new Date(date).getTime();
+  if (!Number.isFinite(time) || end === start) {
+    return padL + innerW / 2;
+  }
+  const ratio = Math.min(1, Math.max(0, (time - start) / (end - start)));
+  return padL + ratio * innerW;
+}
+
+function firstIndexOnOrAfter(dates: string[], startDate?: string) {
+  if (!startDate) {
+    return 0;
+  }
+  const index = dates.findIndex((date) => date >= startDate);
+  return index < 0 ? dates.length : index;
+}
+
+function interpolateAtDate(dates: string[], values: number[], date: string) {
+  if (dates.length === 0 || dates.length !== values.length) {
+    return null;
+  }
+  if (date <= dates[0]) {
+    return values[0];
+  }
+  const last = dates[dates.length - 1];
+  if (date >= last) {
+    return values[values.length - 1];
+  }
+  const idx = dates.findIndex((item) => item >= date);
+  if (idx <= 0) {
+    return values[0];
+  }
+  const t0 = new Date(dates[idx - 1]).getTime();
+  const t1 = new Date(dates[idx]).getTime();
+  const t = new Date(date).getTime();
+  const ratio = t1 === t0 ? 1 : (t - t0) / (t1 - t0);
+  return values[idx - 1] * (1 - ratio) + values[idx] * ratio;
+}
+
+function rangeTime(startDate?: string, endDate?: string) {
+  const start = startDate ? new Date(startDate).getTime() : Number.NaN;
+  const end = endDate ? new Date(endDate).getTime() : start;
+  return {
+    start: Number.isFinite(start) ? start : 0,
+    end: Number.isFinite(end) ? end : Number.isFinite(start) ? start : 0,
+  };
 }
 
 function formatSparkAxis(value: number, currency?: Currency) {
@@ -51,55 +110,59 @@ export function ComboChart({
   values,
   rates,
   buyEvents,
+  rangeStart,
+  rangeEnd,
+  lineStartDate,
 }: {
   labels: string[];
   dates: string[];
   values: number[];
   rates?: number[];
   buyEvents: { date: string; amount: number }[];
+  rangeStart?: string;
+  rangeEnd?: string;
+  lineStartDate?: string;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(360);
   const height = 172;
-  const pad = { l: 32, r: rates?.length ? 36 : 28, t: 10, b: 22 };
+  const pad = CHART_PAD;
   const innerW = Math.max(width - pad.l - pad.r, 1);
   const innerH = height - pad.t - pad.b;
   const count = Math.max(values.length, 1);
-  const vMin = Math.min(...values, 0) * 0.94;
-  const vMax = Math.max(...values, 1) * 1.03;
-  const start = dates[0] ? new Date(dates[0]).getTime() : 0;
-  const end = dates[dates.length - 1]
-    ? new Date(dates[dates.length - 1]).getTime()
-    : start;
+  const { start, end } = rangeTime(
+    rangeStart ?? dates[0],
+    rangeEnd ?? dates[dates.length - 1],
+  );
+  const lineFrom = firstIndexOnOrAfter(dates, lineStartDate);
+  const visibleValues = values.slice(lineFrom);
+  const scaleValues = visibleValues.length > 0 ? visibleValues : values;
+  const vMin = Math.min(...scaleValues) * 0.94;
+  const vMax = Math.max(...scaleValues, 1) * 1.03;
   const xAtIndex = (i: number) =>
     pad.l + (count <= 1 ? innerW / 2 : (i / (count - 1)) * innerW);
-  const xAtDate = (date: string) => {
-    const time = new Date(date).getTime();
-    if (!Number.isFinite(time) || end === start) {
-      return pad.l + innerW / 2;
-    }
-    const ratio = Math.min(1, Math.max(0, (time - start) / (end - start)));
-    return pad.l + ratio * innerW;
-  };
+  const xAtDate = (date: string) => dateToX(date, start, end, pad.l, innerW);
   const xAt = (i: number) => (dates[i] ? xAtDate(dates[i]) : xAtIndex(i));
   const yValue = (v: number) =>
     pad.t + innerH - ((v - vMin) / Math.max(vMax - vMin, 1)) * innerH;
   const rateValues = rates && rates.length === values.length ? rates : [];
-  const rMin = rateValues.length > 0 ? Math.min(...rateValues, 0) : 0;
-  const rMax = rateValues.length > 0 ? Math.max(...rateValues, 0) : 1;
+  const visibleRates = rateValues.slice(lineFrom);
+  const scaleRates = visibleRates.length > 0 ? visibleRates : rateValues;
+  const rMin = scaleRates.length > 0 ? Math.min(...scaleRates, 0) : 0;
+  const rMax = scaleRates.length > 0 ? Math.max(...scaleRates, 0) : 1;
   const yRate = (v: number) =>
     pad.t + innerH - ((v - rMin) / Math.max(rMax - rMin, 1)) * innerH;
   const rTicks = [rMin, (rMin + rMax) / 2, rMax];
-  const xs = values.map((_, i) => xAt(i));
-  const valueYs = values.map((v) => yValue(v));
-  const line = smoothLinePath(xs, valueYs);
+  const xs = values.map((_, i) => xAt(i)).slice(lineFrom);
+  const valueYs = values.slice(lineFrom).map((v) => yValue(v));
+  const line = linePath(xs, valueYs);
   const area =
     xs.length === 0
       ? ""
       : `${line} L${xs[xs.length - 1].toFixed(1)},${(pad.t + innerH).toFixed(1)} L${xs[0].toFixed(1)},${(pad.t + innerH).toFixed(1)} Z`;
-  const rateLine = smoothLinePath(
+  const rateLine = linePath(
     xs,
-    rateValues.map((v) => yRate(v)),
+    visibleRates.map((v) => yRate(v)),
   );
   const buyBars = (() => {
     const merged = new Map<string, number>();
@@ -220,31 +283,35 @@ export function ComboChart({
             strokeDasharray="4 3"
           />
         ) : null}
-        {values.map((v, i) => (
-          <circle
-            key={`p-${dates[i] ?? labels[i]}-${i}`}
-            cx={xAt(i)}
-            cy={yValue(v)}
-            r={2.5}
-            fill="var(--primary)"
-          />
-        ))}
-        {rateValues.map((v, i) => (
-          <circle
-            key={`r-${dates[i] ?? labels[i]}-${i}`}
-            cx={xAt(i)}
-            cy={yRate(v)}
-            r={2.5}
-            fill="var(--chart-3)"
-          />
-        ))}
+        {values.slice(lineFrom).length <= DOT_LIMIT
+          ? values.slice(lineFrom).map((v, i) => (
+              <circle
+                key={`p-${dates[lineFrom + i] ?? labels[lineFrom + i]}-${lineFrom + i}`}
+                cx={xAt(lineFrom + i)}
+                cy={yValue(v)}
+                r={2.5}
+                fill="var(--primary)"
+              />
+            ))
+          : null}
+        {visibleRates.length <= DOT_LIMIT
+          ? visibleRates.map((v, i) => (
+              <circle
+                key={`r-${dates[lineFrom + i] ?? labels[lineFrom + i]}-${lineFrom + i}`}
+                cx={xAt(lineFrom + i)}
+                cy={yRate(v)}
+                r={2.5}
+                fill="var(--chart-3)"
+              />
+            ))
+          : null}
         {vTicks.map((tick) => (
           <text
             key={`vl-${tick}`}
             x={pad.l - 4}
             y={yValue(tick) + 3}
             textAnchor="end"
-            fill="var(--muted-foreground)"
+            fill="var(--primary)"
             fontSize={9}
           >
             {Math.round(tick)}
@@ -257,7 +324,7 @@ export function ComboChart({
                 x={width - pad.r + 4}
                 y={yRate(tick) + 3}
                 textAnchor="start"
-                fill="var(--muted-foreground)"
+                fill="var(--chart-3)"
                 fontSize={9}
               >
                 {`${tick > 0 ? "+" : ""}${tick.toFixed(0)}%`}
@@ -275,16 +342,16 @@ export function ComboChart({
                 {Math.round(tick)}
               </text>
             ))}
-        {labels.map((label, i) => (
+        {axisIndexes(labels.length).map((i) => (
           <text
-            key={`x-${label}-${i}`}
+            key={`x-${labels[i]}-${i}`}
             x={xAt(i)}
             y={height - 6}
             textAnchor="middle"
             fill="var(--muted-foreground)"
             fontSize={9}
           >
-            {label}
+            {labels[i]}
           </text>
         ))}
       </svg>
@@ -310,6 +377,13 @@ export function ComboChart({
 
 export function Sparkline({
   values,
+  dates,
+  labels,
+  labelDates,
+  rangeStart,
+  rangeEnd,
+  lineStartDate,
+  markDate,
   positive,
   height = 52,
   markRatio = null,
@@ -318,6 +392,13 @@ export function Sparkline({
   currency,
 }: {
   values: number[];
+  dates?: string[];
+  labels?: string[];
+  labelDates?: string[];
+  rangeStart?: string;
+  rangeEnd?: string;
+  lineStartDate?: string;
+  markDate?: string;
   positive: boolean;
   height?: number;
   markRatio?: number | null;
@@ -349,12 +430,12 @@ export function Sparkline({
   if (values.length === 0) {
     return <div style={{ height }} />;
   }
-  const min = Math.min(...values, buyPrice ?? Infinity);
-  const max = Math.max(...values, buyPrice ?? -Infinity);
-  const span = Math.max(max - min, 1);
   const color = positive ? "var(--gain)" : "var(--loss)";
 
   if (!showLegend) {
+    const min = Math.min(...values, buyPrice ?? Infinity);
+    const max = Math.max(...values, buyPrice ?? -Infinity);
+    const span = Math.max(max - min, 1);
     const chartW = 320;
     const xAt = (i: number) =>
       values.length === 1 ? chartW / 2 : (i / (values.length - 1)) * chartW;
@@ -417,34 +498,83 @@ export function Sparkline({
     );
   }
 
-  const pad = { l: 52, r: 8, t: 10, b: 10 };
+  const alignedDates =
+    dates && dates.length === values.length ? dates : undefined;
+  const lineFrom = firstIndexOnOrAfter(alignedDates ?? [], lineStartDate);
+  const scaleValues =
+    alignedDates && lineStartDate ? values.slice(lineFrom) : values;
+  const min = Math.min(
+    ...(scaleValues.length > 0 ? scaleValues : values),
+    buyPrice ?? Infinity,
+  );
+  const max = Math.max(
+    ...(scaleValues.length > 0 ? scaleValues : values),
+    buyPrice ?? -Infinity,
+  );
+  const span = Math.max(max - min, 1);
+  const pad = CHART_PAD;
   const innerW = Math.max(width - pad.l - pad.r, 1);
   const innerH = height - pad.t - pad.b;
-  const xAt = (i: number) =>
+  const { start, end } = rangeTime(
+    rangeStart ?? alignedDates?.[0],
+    rangeEnd ?? alignedDates?.[alignedDates.length - 1],
+  );
+  const xAtIndex = (i: number) =>
     pad.l + (values.length === 1 ? innerW / 2 : (i / (values.length - 1)) * innerW);
+  const xAtDate = (date: string) => dateToX(date, start, end, pad.l, innerW);
+  const xAt = (i: number) =>
+    alignedDates?.[i] ? xAtDate(alignedDates[i]) : xAtIndex(i);
   const yAt = (v: number) => pad.t + innerH - ((v - min) / span) * innerH;
-  const line = values
-    .map((v, i) => `${i === 0 ? "M" : "L"}${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`)
-    .join(" ");
-  const area = `${line} L${xAt(values.length - 1).toFixed(1)},${pad.t + innerH} L${xAt(0).toFixed(1)},${pad.t + innerH} Z`;
+  const visXs = values.map((_, i) => xAt(i)).slice(lineFrom);
+  const visYs = values.slice(lineFrom).map((v) => yAt(v));
+  const line = linePath(visXs, visYs);
+  const area =
+    visXs.length === 0
+      ? ""
+      : `${line} L${visXs[visXs.length - 1].toFixed(1)},${(pad.t + innerH).toFixed(1)} L${visXs[0].toFixed(1)},${(pad.t + innerH).toFixed(1)} Z`;
+  const axisLabels = labels ?? [];
+  const axisLabelDates = labelDates ?? [];
+  const inRange = (date: string) => {
+    const first = rangeStart ?? alignedDates?.[0];
+    const last = rangeEnd ?? alignedDates?.[alignedDates.length - 1];
+    if (first && date < first) {
+      return false;
+    }
+    if (last && date > last) {
+      return false;
+    }
+    return true;
+  };
+  const resolvedMarkDate = markDate && inRange(markDate) ? markDate : null;
   const markX =
-    markRatio == null
-      ? null
-      : pad.l + Math.min(1, Math.max(0, markRatio)) * innerW;
+    resolvedMarkDate
+      ? xAtDate(resolvedMarkDate)
+      : markRatio == null
+        ? null
+        : pad.l + Math.min(1, Math.max(0, markRatio)) * innerW;
   const markY =
     markX == null
       ? null
-      : (() => {
-          const pos = markRatio! * Math.max(values.length - 1, 0);
-          const from = Math.floor(pos);
-          const to = Math.min(from + 1, values.length - 1);
-          const t = pos - from;
-          const price =
-            (values[from] ?? values[0]) * (1 - t) + (values[to] ?? values[from]) * t;
-          return yAt(price);
-        })();
+      : resolvedMarkDate && alignedDates
+        ? yAt(
+            interpolateAtDate(alignedDates, values, resolvedMarkDate) ??
+              values[lineFrom] ??
+              values[0],
+          )
+        : (() => {
+            const pos = markRatio! * Math.max(values.length - 1, 0);
+            const from = Math.floor(pos);
+            const to = Math.min(from + 1, values.length - 1);
+            const t = pos - from;
+            const price =
+              (values[from] ?? values[0]) * (1 - t) + (values[to] ?? values[from]) * t;
+            return yAt(price);
+          })();
   const buyY = buyPrice == null ? null : yAt(buyPrice);
   const ticks = min === max ? [min] : [min, (min + max) / 2, max];
+  const lineStartX =
+    visXs[0] ??
+    (lineStartDate && inRange(lineStartDate) ? xAtDate(lineStartDate) : pad.l);
 
   return (
     <div ref={hostRef} className="w-full space-y-2">
@@ -467,11 +597,13 @@ export function Sparkline({
             strokeWidth={1}
           />
         ))}
-        <path d={area} fill={color} opacity={0.12} />
-        <path d={line} fill="none" stroke={color} strokeWidth={1.6} />
+        {area ? <path d={area} fill={color} opacity={0.12} /> : null}
+        {line ? (
+          <path d={line} fill="none" stroke={color} strokeWidth={1.6} />
+        ) : null}
         {buyY != null ? (
           <line
-            x1={pad.l}
+            x1={lineStartX}
             x2={width - pad.r}
             y1={buyY}
             y2={buyY}
@@ -502,10 +634,22 @@ export function Sparkline({
             x={pad.l - 4}
             y={yAt(tick) + 3}
             textAnchor="end"
-            fill="var(--muted-foreground)"
+            fill={color}
             fontSize={9}
           >
             {formatSparkAxis(tick, currency)}
+          </text>
+        ))}
+        {axisIndexes(axisLabels.length).map((i) => (
+          <text
+            key={`x-${axisLabels[i]}-${i}`}
+            x={axisLabelDates[i] ? xAtDate(axisLabelDates[i]) : xAtIndex(i)}
+            y={height - 6}
+            textAnchor="middle"
+            fill="var(--muted-foreground)"
+            fontSize={9}
+          >
+            {axisLabels[i]}
           </text>
         ))}
       </svg>
