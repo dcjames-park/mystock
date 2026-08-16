@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTheme } from "next-themes";
 import { Moon, Sun } from "lucide-react";
 import { signOut } from "@/app/actions/auth";
@@ -24,10 +24,6 @@ import { CSV_EXAMPLE, parsePortfolioCsv, serializePortfolioCsv } from "@/lib/dat
 import { usePortfolio } from "@/lib/data/use-portfolio";
 import { cn } from "@/lib/utils";
 
-function subscribeClient() {
-  return () => {};
-}
-
 export function SettingsView() {
   const { local, name, email } = useUser();
   const { theme, setTheme } = useTheme();
@@ -36,8 +32,11 @@ export function SettingsView() {
   const [importPending, setImportPending] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
-  const isClient = useSyncExternalStore(subscribeClient, () => true, () => false);
-  const currentTheme = isClient && theme === "dark" ? "dark" : "light";
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  const currentTheme = mounted && theme === "dark" ? "dark" : "light";
 
   function handleExport() {
     const csv = serializePortfolioCsv(accounts, holdings);

@@ -9,7 +9,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { isLocalBackend, LOCAL_USER } from "@/lib/data/backend";
@@ -38,16 +37,6 @@ const FALLBACK_FX: FxQuote = {
   fallback: true,
 };
 
-function subscribe(onStoreChange: () => void) {
-  localStore.ensureSeeded();
-  window.addEventListener("storage", onStoreChange);
-  window.addEventListener(localStore.CHANGE_EVENT, onStoreChange);
-  return () => {
-    window.removeEventListener("storage", onStoreChange);
-    window.removeEventListener(localStore.CHANGE_EVENT, onStoreChange);
-  };
-}
-
 function getLocalSnapshot() {
   return JSON.stringify({
     accounts: window.localStorage.getItem(localStore.STORAGE_KEYS.accounts),
@@ -57,36 +46,28 @@ function getLocalSnapshot() {
   });
 }
 
-function subscribeClient() {
-  return () => {};
-}
-
 function usePortfolioState() {
   const local = isLocalBackend();
-  const isClient = useSyncExternalStore(subscribeClient, () => true, () => false);
-  const raw = useSyncExternalStore(
-    subscribe,
-    getLocalSnapshot,
-    () => "",
-  );
+  const [localReady, setLocalReady] = useState(false);
+  const [raw, setRaw] = useState("");
   const [remoteReady, setRemoteReady] = useState(false);
   const [email, setEmail] = useState(local ? LOCAL_USER.email : "");
   const [remoteAccounts, setRemoteAccounts] = useState<Account[]>([]);
   const [remoteHoldings, setRemoteHoldings] = useState<Holding[]>([]);
   const [remoteSnapshots, setRemoteSnapshots] = useState<ValuationSnapshot[]>([]);
   const [liveQuotes, setLiveQuotes] = useState<Record<string, number>>({});
-  const [prevCloses, setPrevCloses] = useState<Record<string, number>>(() =>
-    localStore.listPrevCloses(),
-  );
-  const [quotesAsOf, setQuotesAsOf] = useState<string | null>(() =>
-    localStore.readQuotesAt(),
-  );
+  const [prevCloses, setPrevCloses] = useState<Record<string, number>>({});
+  const [quotesAsOf, setQuotesAsOf] = useState<string | null>(null);
   const [quotesRefreshing, setQuotesRefreshing] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const [fx, setFx] = useState<FxQuote>(FALLBACK_FX);
   const [charts, setCharts] = useState<Record<string, number[]>>({});
   const [histories, setHistories] = useState<Record<string, PricePoint[]>>({});
   const [chartPending, setChartPending] = useState(0);
+  const historiesRef = useRef(histories);
+  const inflightCharts = useRef(new Set<string>());
+  const lastQuoteFetch = useRef({ key: "", at: 0 });
+  historiesRef.current = histories;
 
   const parsed = useMemo(() => {
     if (!local || !raw) {
@@ -110,11 +91,27 @@ function usePortfolioState() {
   const snapshots = local ? parsed.snapshots : remoteSnapshots;
   const quotes = { ...parsed.quoteCache, ...liveQuotes };
   const tickerKey = [...new Set(holdings.map((item) => item.ticker).filter(Boolean))].join(",");
-  const ready = local ? isClient : remoteReady;
-  const historiesRef = useRef(histories);
-  const inflightCharts = useRef(new Set<string>());
-  const lastQuoteFetch = useRef({ key: "", at: 0 });
-  historiesRef.current = histories;
+  const ready = local ? localReady : remoteReady;
+
+  useEffect(() => {
+    if (!local) {
+      return;
+    }
+    localStore.ensureSeeded();
+    const sync = () => {
+      setRaw(getLocalSnapshot());
+      setPrevCloses(localStore.listPrevCloses());
+      setQuotesAsOf(localStore.readQuotesAt());
+    };
+    sync();
+    setLocalReady(true);
+    window.addEventListener("storage", sync);
+    window.addEventListener(localStore.CHANGE_EVENT, sync);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener(localStore.CHANGE_EVENT, sync);
+    };
+  }, [local]);
 
   const reloadRemote = useCallback(async () => {
     if (local) {
