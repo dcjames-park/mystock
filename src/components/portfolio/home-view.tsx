@@ -12,7 +12,6 @@ import {
   Pencil,
   Plus,
   Trash2,
-  X,
 } from "lucide-react";
 import {
   AppShell,
@@ -66,11 +65,13 @@ function sparkFor(
   if (series && series.length > 0) {
     return {
       values: series.map((point) => point.close),
+      dates: series.map((point) => point.date),
       markRatio: buyMarkRatio(series, toDateInput(item.boughtAt)),
     };
   }
   return {
     values: [item.buyPrice, quotes[item.ticker] ?? item.buyPrice],
+    dates: undefined as string[] | undefined,
     markRatio: 0,
   };
 }
@@ -435,7 +436,6 @@ function AccountSheetDock({
                 className="bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
                 onClick={() => setOpen(false)}
               >
-                <X data-icon="inline-start" />
                 닫기
               </Button>
             </div>
@@ -864,7 +864,7 @@ export function HomeView() {
         <section className="space-y-5">
           <div className="flex items-center gap-2">
             <h2 className="min-w-0 flex-1 font-heading text-base font-medium sm:text-lg">
-              계좌별 종목
+              보유 종목
             </h2>
             <Button
               type="button"
@@ -1127,13 +1127,15 @@ function HoldingRow({
             현재가 {formatPriceShort(currentPrice, item.currency)}
           </p>
         </div>
-        <div className="h-12 w-20 shrink-0 sm:w-32 md:w-44">
+        <div className="relative h-12 w-20 shrink-0 overflow-visible sm:w-32 md:w-44">
           <Sparkline
             values={spark.values}
+            dates={spark.dates}
             positive={krw.rate >= 0}
             height={48}
             markRatio={spark.markRatio}
             buyPrice={item.buyPrice}
+            currency={item.currency}
           />
         </div>
       </div>

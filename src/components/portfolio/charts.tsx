@@ -1,9 +1,10 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import type { Currency } from "@/lib/data/types";
+import { formatDateKo, formatPct, formatPrice } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 const CHART_PAD = { l: 52, r: 36, t: 10, b: 22 };
@@ -104,6 +105,59 @@ function formatSparkAxis(value: number, currency?: Currency) {
   return Math.round(value).toLocaleString("ko-KR");
 }
 
+function svgPointX(event: MouseEvent<SVGSVGElement>, viewW: number) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  if (rect.width <= 0) {
+    return 0;
+  }
+  return ((event.clientX - rect.left) / rect.width) * viewW;
+}
+
+function nearestIndex(xs: number[], x: number, maxDist = 18) {
+  let best = -1;
+  let bestDist = maxDist;
+  for (let i = 0; i < xs.length; i += 1) {
+    const dist = Math.abs(xs[i] - x);
+    if (dist <= bestDist) {
+      best = i;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+function ChartTip({
+  x,
+  y,
+  width,
+  title,
+  lines,
+}: {
+  x: number;
+  y: number;
+  width: number;
+  title: string;
+  lines: { label: string; value: string; color?: string }[];
+}) {
+  const pct = Math.min(88, Math.max(12, (x / Math.max(width, 1)) * 100));
+  return (
+    <div
+      className="pointer-events-none absolute z-20 min-w-[8.5rem] -translate-x-1/2 -translate-y-full rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md"
+      style={{ left: `${pct}%`, top: Math.max(y - 10, 8) }}
+    >
+      <p className="text-[11px] text-muted-foreground">{title}</p>
+      {lines.map((line) => (
+        <p key={line.label} className="mt-0.5 flex items-baseline justify-between gap-3">
+          <span className="text-muted-foreground">{line.label}</span>
+          <span className="font-medium tabular-nums" style={line.color ? { color: line.color } : undefined}>
+            {line.value}
+          </span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
 export function ComboChart({
   labels,
   dates,
@@ -125,6 +179,7 @@ export function ComboChart({
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(360);
+  const [active, setActive] = useState<number | null>(null);
   const height = 172;
   const pad = CHART_PAD;
   const innerW = Math.max(width - pad.l - pad.r, 1);
@@ -211,6 +266,11 @@ export function ComboChart({
   const yBuy = (v: number) => pad.t + innerH - (v / bMax) * innerH;
   const vTicks = [vMin, (vMin + vMax) / 2, vMax];
   const bTicks = [0, bMax / 2, bMax];
+  const dateKey = dates.join("|");
+
+  useEffect(() => {
+    setActive(null);
+  }, [dateKey]);
 
   useEffect(() => {
     const node = hostRef.current;
@@ -228,13 +288,23 @@ export function ComboChart({
   }, []);
 
   return (
-    <div ref={hostRef} className="w-full space-y-2">
+    <div ref={hostRef} className="relative w-full space-y-2">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="block h-[172px] w-full"
+        className="block h-[172px] w-full cursor-pointer"
         preserveAspectRatio="none"
         role="img"
         aria-label="평가 금액·수익률 추이와 매수 시점 금액"
+        onClick={(event) => {
+          const next = nearestIndex(xs, svgPointX(event, width));
+          setActive((prev) => {
+            if (next < 0) {
+              return null;
+            }
+            const idx = lineFrom + next;
+            return prev === idx ? null : idx;
+          });
+        }}
       >
         {vTicks.map((tick) => (
           <line
@@ -289,22 +359,50 @@ export function ComboChart({
                 key={`p-${dates[lineFrom + i] ?? labels[lineFrom + i]}-${lineFrom + i}`}
                 cx={xAt(lineFrom + i)}
                 cy={yValue(v)}
-                r={2.5}
+                r={active === lineFrom + i ? 4 : 2.5}
                 fill="var(--primary)"
               />
             ))
-          : null}
+          : active != null && active >= lineFrom
+            ? (
+              <circle
+                cx={xAt(active)}
+                cy={yValue(values[active] ?? 0)}
+                r={4}
+                fill="var(--primary)"
+              />
+            )
+            : null}
         {visibleRates.length <= DOT_LIMIT
           ? visibleRates.map((v, i) => (
               <circle
                 key={`r-${dates[lineFrom + i] ?? labels[lineFrom + i]}-${lineFrom + i}`}
                 cx={xAt(lineFrom + i)}
                 cy={yRate(v)}
-                r={2.5}
+                r={active === lineFrom + i ? 4 : 2.5}
                 fill="var(--chart-3)"
               />
             ))
-          : null}
+          : active != null && active >= lineFrom && rateValues[active] != null
+            ? (
+              <circle
+                cx={xAt(active)}
+                cy={yRate(rateValues[active])}
+                r={4}
+                fill="var(--chart-3)"
+              />
+            )
+            : null}
+        {values.slice(lineFrom).map((_, i) => (
+          <circle
+            key={`hit-${lineFrom + i}`}
+            cx={xAt(lineFrom + i)}
+            cy={yValue(values[lineFrom + i] ?? 0)}
+            r={12}
+            fill="transparent"
+            className="cursor-pointer"
+          />
+        ))}
         {vTicks.map((tick) => (
           <text
             key={`vl-${tick}`}
@@ -355,6 +453,30 @@ export function ComboChart({
           </text>
         ))}
       </svg>
+      {active != null && values[active] != null ? (
+        <ChartTip
+          x={xAt(active)}
+          y={yValue(values[active])}
+          width={width}
+          title={dates[active] ? formatDateKo(dates[active]) : labels[active] ?? ""}
+          lines={[
+            {
+              label: "평가",
+              value: `${Math.round(values[active]).toLocaleString("ko-KR")}만`,
+              color: "var(--primary)",
+            },
+            ...(rateValues[active] != null
+              ? [
+                  {
+                    label: "수익률",
+                    value: formatPct(rateValues[active]),
+                    color: "var(--chart-3)",
+                  },
+                ]
+              : []),
+          ]}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className="h-0.5 w-3 bg-primary" />
@@ -408,6 +530,12 @@ export function Sparkline({
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(360);
+  const [active, setActive] = useState<number | null>(null);
+  const valueKey = values.join("|");
+
+  useEffect(() => {
+    setActive(null);
+  }, [valueKey]);
 
   useEffect(() => {
     if (!showLegend) {
@@ -459,42 +587,69 @@ export function Sparkline({
             return yAt(price);
           })();
     const buyY = buyPrice == null ? null : yAt(buyPrice);
+    const xs = values.map((_, i) => xAt(i));
     return (
-      <svg
-        viewBox={`0 0 ${chartW} ${height}`}
-        className="h-full w-full"
-        preserveAspectRatio="none"
-      >
-        <path d={area} fill={color} opacity={0.12} />
-        <path d={line} fill="none" stroke={color} strokeWidth={1.6} />
-        {buyY != null ? (
-          <line
-            x1={0}
-            x2={chartW}
-            y1={buyY}
-            y2={buyY}
-            stroke="var(--foreground)"
-            strokeOpacity={0.55}
-            strokeWidth={2}
-            strokeDasharray="3 2"
-          />
-        ) : null}
-        {markX != null && markY != null ? (
-          <>
+      <div className="relative h-full w-full">
+        <svg
+          viewBox={`0 0 ${chartW} ${height}`}
+          className="h-full w-full cursor-pointer"
+          preserveAspectRatio="none"
+          onClick={(event) => {
+            const next = nearestIndex(xs, svgPointX(event, chartW), 24);
+            setActive((prev) => (next < 0 || prev === next ? null : next));
+          }}
+        >
+          <path d={area} fill={color} opacity={0.12} />
+          <path d={line} fill="none" stroke={color} strokeWidth={1.6} />
+          {buyY != null ? (
             <line
-              x1={markX}
-              x2={markX}
-              y1={2}
-              y2={height - 2}
+              x1={0}
+              x2={chartW}
+              y1={buyY}
+              y2={buyY}
               stroke="var(--foreground)"
               strokeOpacity={0.55}
               strokeWidth={2}
               strokeDasharray="3 2"
             />
-            <circle cx={markX} cy={markY} r={5} fill="var(--foreground)" />
-          </>
+          ) : null}
+          {markX != null && markY != null ? (
+            <>
+              <line
+                x1={markX}
+                x2={markX}
+                y1={2}
+                y2={height - 2}
+                stroke="var(--foreground)"
+                strokeOpacity={0.55}
+                strokeWidth={2}
+                strokeDasharray="3 2"
+              />
+              <circle cx={markX} cy={markY} r={5} fill="var(--foreground)" />
+            </>
+          ) : null}
+          {active != null ? (
+            <circle cx={xAt(active)} cy={yAt(values[active] ?? 0)} r={4} fill={color} />
+          ) : null}
+        </svg>
+        {active != null && values[active] != null ? (
+          <ChartTip
+            x={xAt(active)}
+            y={yAt(values[active])}
+            width={chartW}
+            title={dates?.[active] ? formatDateKo(dates[active]) : "주가"}
+            lines={[
+              {
+                label: "주가",
+                value: currency
+                  ? formatPrice(values[active], currency)
+                  : formatSparkAxis(values[active], currency),
+                color,
+              },
+            ]}
+          />
         ) : null}
-      </svg>
+      </div>
     );
   }
 
@@ -575,16 +730,27 @@ export function Sparkline({
   const lineStartX =
     visXs[0] ??
     (lineStartDate && inRange(lineStartDate) ? xAtDate(lineStartDate) : pad.l);
+  const visValues = values.slice(lineFrom);
 
   return (
-    <div ref={hostRef} className="w-full space-y-2">
+    <div ref={hostRef} className="relative w-full space-y-2">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="block w-full"
+        className="block w-full cursor-pointer"
         style={{ height }}
         preserveAspectRatio="none"
         role="img"
         aria-label="주가 추세와 매수평균·매수일"
+        onClick={(event) => {
+          const next = nearestIndex(visXs, svgPointX(event, width));
+          setActive((prev) => {
+            if (next < 0) {
+              return null;
+            }
+            const idx = lineFrom + next;
+            return prev === idx ? null : idx;
+          });
+        }}
       >
         {ticks.map((tick, i) => (
           <line
@@ -628,6 +794,36 @@ export function Sparkline({
             <circle cx={markX} cy={markY} r={5} fill="var(--foreground)" />
           </>
         ) : null}
+        {visValues.length <= DOT_LIMIT
+          ? visValues.map((v, i) => (
+              <circle
+                key={`sp-${lineFrom + i}`}
+                cx={xAt(lineFrom + i)}
+                cy={yAt(v)}
+                r={active === lineFrom + i ? 4 : 2.5}
+                fill={color}
+              />
+            ))
+          : active != null && active >= lineFrom
+            ? (
+              <circle
+                cx={xAt(active)}
+                cy={yAt(values[active] ?? 0)}
+                r={4}
+                fill={color}
+              />
+            )
+            : null}
+        {visValues.map((_, i) => (
+          <circle
+            key={`hit-sp-${lineFrom + i}`}
+            cx={xAt(lineFrom + i)}
+            cy={yAt(values[lineFrom + i] ?? 0)}
+            r={12}
+            fill="transparent"
+            className="cursor-pointer"
+          />
+        ))}
         {ticks.map((tick, i) => (
           <text
             key={`vl-${i}`}
@@ -653,6 +849,23 @@ export function Sparkline({
           </text>
         ))}
       </svg>
+      {active != null && values[active] != null ? (
+        <ChartTip
+          x={xAt(active)}
+          y={yAt(values[active])}
+          width={width}
+          title={alignedDates?.[active] ? formatDateKo(alignedDates[active]) : axisLabels[active] ?? "주가"}
+          lines={[
+            {
+              label: "주가",
+              value: currency
+                ? formatPrice(values[active], currency)
+                : formatSparkAxis(values[active], currency),
+              color,
+            },
+          ]}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className="h-0.5 w-3" style={{ background: color }} />

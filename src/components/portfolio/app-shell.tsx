@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, ChevronLeft, LogOut, RefreshCw, Settings, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, LogOut, RefreshCw, Settings } from "lucide-react";
 import { signOut } from "@/app/actions/auth";
 import { FolioLogo } from "@/components/portfolio/logo";
 import { Badge } from "@/components/ui/badge";
@@ -182,7 +182,6 @@ export function OverlayCloseButton({
       )}
       onClick={() => overlay.close()}
     >
-      <X data-icon="inline-start" />
       닫기
     </Button>
   );

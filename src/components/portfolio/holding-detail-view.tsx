@@ -489,9 +489,8 @@ export function HoldingDetailView() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="pl-4">매수일</TableHead>
-                  <TableHead className="text-right">매수가</TableHead>
-                  <TableHead className="text-right">수량</TableHead>
-                  <TableHead className="hidden text-right sm:table-cell">매수금액</TableHead>
+                  <TableHead className="text-right">매수가 · 수량</TableHead>
+                  <TableHead className="text-right">매수금액</TableHead>
                   <TableHead className="text-right">손익</TableHead>
                   <TableHead className="w-14 pr-3 text-right sm:w-16">
                     <span className="sr-only">관리</span>
@@ -512,12 +511,12 @@ export function HoldingDetailView() {
                         {formatDateKo(item.boughtAt)}
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatPrice(item.buyPrice, holding.currency)}
+                        <p>{formatPrice(item.buyPrice, holding.currency)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.qty.toLocaleString("ko-KR")}주
+                        </p>
                       </TableCell>
                       <TableCell className="text-right">
-                        {item.qty.toLocaleString("ko-KR")}
-                      </TableCell>
-                      <TableCell className="hidden text-right sm:table-cell">
                         {formatPrice(item.buyPrice * item.qty, holding.currency)}
                       </TableCell>
                       <TableCell className="text-right">
@@ -572,15 +571,17 @@ export function HoldingDetailView() {
                   <TableRow>
                     <TableCell className="pl-4">합계</TableCell>
                     <TableCell className="text-right">
-                      <span className="mr-1 text-xs font-normal text-muted-foreground">
-                        평균
-                      </span>
-                      {formatPrice(holding.buyPrice, holding.currency)}
+                      <p>
+                        <span className="mr-1 text-xs font-normal text-muted-foreground">
+                          평균
+                        </span>
+                        {formatPrice(holding.buyPrice, holding.currency)}
+                      </p>
+                      <p className="text-xs font-normal text-muted-foreground">
+                        {holding.qty.toLocaleString("ko-KR")}주
+                      </p>
                     </TableCell>
                     <TableCell className="text-right">
-                      {holding.qty.toLocaleString("ko-KR")}
-                    </TableCell>
-                    <TableCell className="hidden text-right sm:table-cell">
                       {formatPrice(holding.buyPrice * holding.qty, holding.currency)}
                     </TableCell>
                     <TableCell className="text-right">
