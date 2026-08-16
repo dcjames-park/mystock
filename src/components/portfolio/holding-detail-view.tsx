@@ -449,6 +449,7 @@ export function HoldingDetailView() {
                 labels={trend.map((item) => item.label)}
                 dates={trend.map((item) => item.date)}
                 values={trend.map((item) => item.value)}
+                rates={trend.map((item) => item.rate)}
                 buyEvents={buyEvents}
               />
             </ChartSurface>
@@ -458,7 +459,7 @@ export function HoldingDetailView() {
                 : period === "1m"
                   ? "일봉"
                   : "주봉"}
-              · 점선은 매수일/매수가 · 막대는 매수 금액(만원)
+              · 점선은 매수일/매수가 · 평가 추이 점선은 수익률 · 막대는 매수 금액(만원)
             </p>
           </CardContent>
         </Card>

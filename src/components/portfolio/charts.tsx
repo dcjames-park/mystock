@@ -6,6 +6,33 @@ import { Loader2 } from "lucide-react";
 import type { Currency } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
 
+function smoothLinePath(xs: number[], ys: number[]) {
+  const n = xs.length;
+  if (n === 0 || n !== ys.length) {
+    return "";
+  }
+  const pt = (x: number, y: number) => `${x.toFixed(1)},${y.toFixed(1)}`;
+  if (n === 1) {
+    return `M${pt(xs[0], ys[0])}`;
+  }
+  if (n === 2) {
+    return `M${pt(xs[0], ys[0])} L${pt(xs[1], ys[1])}`;
+  }
+  let d = `M${pt(xs[0], ys[0])}`;
+  for (let i = 0; i < n - 1; i += 1) {
+    const x0 = xs[i - 1] ?? xs[i];
+    const y0 = ys[i - 1] ?? ys[i];
+    const x1 = xs[i];
+    const y1 = ys[i];
+    const x2 = xs[i + 1];
+    const y2 = ys[i + 1];
+    const x3 = xs[i + 2] ?? x2;
+    const y3 = ys[i + 2] ?? y2;
+    d += ` C${pt(x1 + (x2 - x0) / 6, y1 + (y2 - y0) / 6)} ${pt(x2 - (x3 - x1) / 6, y2 - (y3 - y1) / 6)} ${pt(x2, y2)}`;
+  }
+  return d;
+}
+
 function formatSparkAxis(value: number, currency?: Currency) {
   if (currency === "USD") {
     const abs = Math.abs(value);
@@ -63,12 +90,17 @@ export function ComboChart({
   const yRate = (v: number) =>
     pad.t + innerH - ((v - rMin) / Math.max(rMax - rMin, 1)) * innerH;
   const rTicks = [rMin, (rMin + rMax) / 2, rMax];
-  const rateLine = rateValues
-    .map(
-      (v, i) =>
-        `${i === 0 ? "M" : "L"}${xAt(i).toFixed(1)},${yRate(v).toFixed(1)}`,
-    )
-    .join(" ");
+  const xs = values.map((_, i) => xAt(i));
+  const valueYs = values.map((v) => yValue(v));
+  const line = smoothLinePath(xs, valueYs);
+  const area =
+    xs.length === 0
+      ? ""
+      : `${line} L${xs[xs.length - 1].toFixed(1)},${(pad.t + innerH).toFixed(1)} L${xs[0].toFixed(1)},${(pad.t + innerH).toFixed(1)} Z`;
+  const rateLine = smoothLinePath(
+    xs,
+    rateValues.map((v) => yRate(v)),
+  );
   const buyBars = (() => {
     const merged = new Map<string, number>();
     for (const event of buyEvents) {
@@ -114,13 +146,6 @@ export function ComboChart({
   })();
   const bMax = Math.max(Math.max(...buyBars.items.map((item) => item.amount), 0), 1) * 1.2;
   const yBuy = (v: number) => pad.t + innerH - (v / bMax) * innerH;
-  const line = values
-    .map(
-      (v, i) =>
-        `${i === 0 ? "M" : "L"}${xAt(i).toFixed(1)},${yValue(v).toFixed(1)}`,
-    )
-    .join(" ");
-  const area = `${line} L${xAt(count - 1).toFixed(1)},${pad.t + innerH} L${xAt(0).toFixed(1)},${pad.t + innerH} Z`;
   const vTicks = [vMin, (vMin + vMax) / 2, vMax];
   const bTicks = [0, bMax / 2, bMax];
 
@@ -171,14 +196,27 @@ export function ComboChart({
             rx={2}
           />
         ))}
-        <path d={area} fill="var(--primary)" fillOpacity={0.12} />
-        <path d={line} fill="none" stroke="var(--primary)" strokeWidth={2} />
+        {area ? (
+          <path d={area} fill="var(--primary)" fillOpacity={0.12} />
+        ) : null}
+        {line ? (
+          <path
+            d={line}
+            fill="none"
+            stroke="var(--primary)"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : null}
         {rateLine ? (
           <path
             d={rateLine}
             fill="none"
             stroke="var(--chart-3)"
             strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
             strokeDasharray="4 3"
           />
         ) : null}
@@ -189,6 +227,15 @@ export function ComboChart({
             cy={yValue(v)}
             r={2.5}
             fill="var(--primary)"
+          />
+        ))}
+        {rateValues.map((v, i) => (
+          <circle
+            key={`r-${dates[i] ?? labels[i]}-${i}`}
+            cx={xAt(i)}
+            cy={yRate(v)}
+            r={2.5}
+            fill="var(--chart-3)"
           />
         ))}
         {vTicks.map((tick) => (
