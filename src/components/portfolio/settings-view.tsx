@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/card";
 import { useUser } from "@/hooks/use-user";
 import { CSV_EXAMPLE, parsePortfolioCsv, serializePortfolioCsv } from "@/lib/data/csv";
+import * as localStore from "@/lib/data/local-store";
 import { usePortfolio } from "@/lib/data/use-portfolio";
 import { cn } from "@/lib/utils";
 
@@ -33,8 +34,10 @@ export function SettingsView() {
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [dayChangePopup, setDayChangePopup] = useState(false);
   useEffect(() => {
     setMounted(true);
+    setDayChangePopup(localStore.readDayChangePopup());
   }, []);
   const currentTheme = mounted && theme === "dark" ? "dark" : "light";
 
@@ -111,6 +114,26 @@ export function SettingsView() {
               icon={<Moon className="size-4" />}
               label="다크 모드"
               onClick={() => setTheme("dark")}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>전일 대비 요약</CardTitle>
+            <CardDescription>
+              접속할 때 전일 종가 대비 등락을 계좌·종목별로 보여 줍니다.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SettingOnOff
+              on={dayChangePopup}
+              label="접속 시 전일 대비 등락 확인하기"
+              hint="현재가와 전일 종가를 비교합니다. 이 탭에서는 한 번만 표시됩니다."
+              onChange={(next) => {
+                setDayChangePopup(next);
+                localStore.saveDayChangePopup(next);
+              }}
             />
           </CardContent>
         </Card>
@@ -232,5 +255,58 @@ function ThemeOption({
         <span className="text-xs font-medium text-primary">사용 중</span>
       ) : null}
     </button>
+  );
+}
+
+function SettingOnOff({
+  on,
+  label,
+  hint,
+  onChange,
+}: {
+  on: boolean;
+  label: string;
+  hint: string;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-lg border px-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium">{label}</p>
+        <p className="mt-0.5 text-xs leading-4 text-muted-foreground">{hint}</p>
+      </div>
+      <div
+        role="group"
+        aria-label={label}
+        className="flex shrink-0 rounded-lg border bg-muted p-0.5"
+      >
+        <button
+          type="button"
+          aria-pressed={!on}
+          onClick={() => onChange(false)}
+          className={cn(
+            "h-7 min-w-10 rounded-md px-2.5 text-xs font-medium transition-colors",
+            !on
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground",
+          )}
+        >
+          OFF
+        </button>
+        <button
+          type="button"
+          aria-pressed={on}
+          onClick={() => onChange(true)}
+          className={cn(
+            "h-7 min-w-10 rounded-md px-2.5 text-xs font-medium transition-colors",
+            on
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground",
+          )}
+        >
+          ON
+        </button>
+      </div>
+    </div>
   );
 }

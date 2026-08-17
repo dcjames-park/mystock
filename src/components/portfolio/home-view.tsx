@@ -41,7 +41,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { PeriodPicker } from "@/components/portfolio/period-picker";
+import { DayChangePopup } from "@/components/portfolio/day-change-popup";
 import { useOverlay } from "@/components/portfolio/overlay-context";
+import {
+  DAY_CHANGE_POPUP_SHOWN_KEY,
+  buildDayChangeSummary,
+  type DayChangeSummary,
+} from "@/lib/data/day-change";
+import { readDayChangePopup } from "@/lib/data/local-store";
 import { usePortfolio } from "@/lib/data/use-portfolio";
 import { buildBuyEvents, buildTrend, toDateInput } from "@/lib/data/trend";
 import type { Account, Holding, Period, PricePoint } from "@/lib/data/types";
@@ -571,6 +578,9 @@ export function HomeView() {
   const [trendOpen, toggleTrend] = useDashOpen(DASH_TREND_KEY);
   const [holdingSort, setHoldingSort] = useState<HoldingSort>("value");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [dayChangePopup, setDayChangePopup] = useState<DayChangeSummary | null>(
+    null,
+  );
 
   useEffect(() => {
     const saved = parseHoldingSort(window.localStorage.getItem(HOLDING_SORT_KEY));
@@ -586,6 +596,8 @@ export function HomeView() {
     holdings,
     quotes,
     prevCloses,
+    quotesAsOf,
+    quotesSettled,
     fx,
     histories,
     chartsLoading,
@@ -690,6 +702,39 @@ export function HomeView() {
     void loadCharts(tickerKey.split(","), period);
   }, [loadCharts, period, tickerKey]);
 
+  useEffect(() => {
+    if (!ready || !quotesSettled || overlay.state || dayChangePopup) {
+      return;
+    }
+    if (window.sessionStorage.getItem(DAY_CHANGE_POPUP_SHOWN_KEY) === "1") {
+      return;
+    }
+    if (!readDayChangePopup()) {
+      return;
+    }
+    const summary = buildDayChangeSummary(
+      accounts,
+      holdings,
+      quotes,
+      prevCloses,
+      usdKrw,
+    );
+    if (summary.accounts.length === 0) {
+      return;
+    }
+    setDayChangePopup(summary);
+  }, [
+    ready,
+    quotesSettled,
+    overlay.state,
+    dayChangePopup,
+    accounts,
+    holdings,
+    quotes,
+    prevCloses,
+    usdKrw,
+  ]);
+
   if (!ready) {
     return <ScreenSkeleton />;
   }
@@ -715,6 +760,7 @@ export function HomeView() {
   }
 
   return (
+    <>
     <AppShell
       dock={
         <AccountSheetDock
@@ -1110,6 +1156,17 @@ export function HomeView() {
         </p>
       </div>
     </AppShell>
+    {dayChangePopup ? (
+      <DayChangePopup
+        summary={dayChangePopup}
+        asOf={quotesAsOf}
+        onClose={() => {
+          window.sessionStorage.setItem(DAY_CHANGE_POPUP_SHOWN_KEY, "1");
+          setDayChangePopup(null);
+        }}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -1161,7 +1218,14 @@ function HoldingRow({
             ) : null}
           </p>
         </div>
-        <DayChange value={dayChange} className="shrink-0 pt-0.5" />
+        <div className="shrink-0 pt-0.5 text-right">
+          <DayChange value={dayChange} />
+          {dayChange != null ? (
+            <p className="text-[10px] leading-4 font-normal text-muted-foreground">
+              전일 대비
+            </p>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-3 flex items-center gap-2 sm:gap-3">

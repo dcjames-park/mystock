@@ -11,6 +11,7 @@ const KEYS = {
   quotesAt: "mystock.quotesAt",
   fx: "mystock.fx",
   seeded: "mystock.seeded",
+  dayChangePopup: "mystock.dayChangePopup",
 } as const;
 
 export type CachedFx = {
@@ -141,6 +142,20 @@ export function saveFxCache(fx: CachedFx) {
     return;
   }
   window.localStorage.setItem(KEYS.fx, JSON.stringify(fx));
+}
+
+export function readDayChangePopup() {
+  if (!canUseStorage()) {
+    return false;
+  }
+  return window.localStorage.getItem(KEYS.dayChangePopup) === "1";
+}
+
+export function saveDayChangePopup(on: boolean) {
+  if (!canUseStorage()) {
+    return;
+  }
+  window.localStorage.setItem(KEYS.dayChangePopup, on ? "1" : "0");
 }
 
 export function upsertAccount(account: Account) {

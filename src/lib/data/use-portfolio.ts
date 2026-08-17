@@ -762,6 +762,7 @@ function usePortfolioState() {
     prevCloses,
     quotesAsOf,
     quotesRefreshing,
+    quotesSettled,
     refreshToken,
     fx,
     charts,
