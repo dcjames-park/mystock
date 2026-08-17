@@ -581,6 +581,7 @@ export function HomeView() {
   const [dayChangePopup, setDayChangePopup] = useState<DayChangeSummary | null>(
     null,
   );
+  const [dayChangeLoading, setDayChangeLoading] = useState(false);
 
   useEffect(() => {
     const saved = parseHoldingSort(window.localStorage.getItem(HOLDING_SORT_KEY));
@@ -703,13 +704,23 @@ export function HomeView() {
   }, [loadCharts, period, tickerKey]);
 
   useEffect(() => {
-    if (!ready || !quotesSettled || overlay.state || dayChangePopup) {
+    if (!ready || overlay.state || dayChangePopup) {
       return;
     }
     if (window.sessionStorage.getItem(DAY_CHANGE_POPUP_SHOWN_KEY) === "1") {
       return;
     }
     if (!readDayChangePopup()) {
+      if (dayChangeLoading) {
+        setDayChangeLoading(false);
+      }
+      return;
+    }
+    if (!dayChangeLoading) {
+      setDayChangeLoading(true);
+      return;
+    }
+    if (!quotesSettled) {
       return;
     }
     const summary = buildDayChangeSummary(
@@ -720,6 +731,7 @@ export function HomeView() {
       usdKrw,
     );
     if (summary.accounts.length === 0) {
+      setDayChangeLoading(false);
       return;
     }
     setDayChangePopup(summary);
@@ -728,6 +740,7 @@ export function HomeView() {
     quotesSettled,
     overlay.state,
     dayChangePopup,
+    dayChangeLoading,
     accounts,
     holdings,
     quotes,
@@ -1156,13 +1169,14 @@ export function HomeView() {
         </p>
       </div>
     </AppShell>
-    {dayChangePopup ? (
+    {dayChangeLoading || dayChangePopup ? (
       <DayChangePopup
         summary={dayChangePopup}
         asOf={quotesAsOf}
         onClose={() => {
           window.sessionStorage.setItem(DAY_CHANGE_POPUP_SHOWN_KEY, "1");
           setDayChangePopup(null);
+          setDayChangeLoading(false);
         }}
       />
     ) : null}
