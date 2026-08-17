@@ -7,6 +7,8 @@ import {
   ArrowUpNarrowWide,
   Check,
   ChevronDown,
+  ChevronsDown,
+  ChevronsUp,
   History,
   EllipsisVertical,
   Pencil,
@@ -80,6 +82,7 @@ const DASH_SUMMARY_KEY = "mystock.dash.summaryOpen";
 const DASH_TREND_KEY = "mystock.dash.trendOpen";
 const HOLDING_SORT_KEY = "mystock.holdingSort";
 const SELECTED_ACCOUNTS_KEY = "mystock.selectedAccounts";
+const EXPANDED_ACCOUNTS_KEY = "mystock.expandedAccounts";
 
 type HoldingSort = "value" | "rate" | "change";
 type SortDir = "asc" | "desc";
@@ -126,6 +129,31 @@ function persistSelectedIds(ids: string[] | null) {
     return;
   }
   window.localStorage.setItem(SELECTED_ACCOUNTS_KEY, JSON.stringify(ids));
+}
+
+function parseExpanded(raw: string | null): Record<string, boolean> {
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    const next: Record<string, boolean> = {};
+    for (const [id, open] of Object.entries(parsed)) {
+      if (typeof open === "boolean") {
+        next[id] = open;
+      }
+    }
+    return next;
+  } catch {
+    return {};
+  }
+}
+
+function persistExpanded(next: Record<string, boolean>) {
+  window.localStorage.setItem(EXPANDED_ACCOUNTS_KEY, JSON.stringify(next));
 }
 
 function dayChangePct(price: number, prevClose?: number) {
@@ -549,6 +577,7 @@ export function HomeView() {
     setHoldingSort(saved.id);
     setSortDir(saved.dir);
     setSelectedIds(parseSelectedIds(window.localStorage.getItem(SELECTED_ACCOUNTS_KEY)));
+    setExpanded(parseExpanded(window.localStorage.getItem(EXPANDED_ACCOUNTS_KEY)));
   }, []);
 
   const {
@@ -882,16 +911,27 @@ export function HomeView() {
                 variant="outline"
                 onClick={() => {
                   const allOpen = grouped.every((group) => expanded[group.id] !== false);
-                  const next: Record<string, boolean> = {};
-                  for (const group of grouped) {
-                    next[group.id] = !allOpen;
-                  }
-                  setExpanded(next);
+                  setExpanded((prev) => {
+                    const next: Record<string, boolean> = { ...prev };
+                    for (const group of grouped) {
+                      next[group.id] = !allOpen;
+                    }
+                    persistExpanded(next);
+                    return next;
+                  });
                 }}
               >
-                {grouped.every((group) => expanded[group.id] !== false)
-                  ? "종목 숨김"
-                  : "종목 펼침"}
+                {grouped.every((group) => expanded[group.id] !== false) ? (
+                  <>
+                    <ChevronsUp data-icon="inline-start" />
+                    종목 숨김
+                  </>
+                ) : (
+                  <>
+                    <ChevronsDown data-icon="inline-start" />
+                    종목 펼침
+                  </>
+                )}
               </Button>
             ) : null}
           </div>
@@ -926,10 +966,14 @@ export function HomeView() {
               <div
                 className="cursor-pointer rounded-lg border bg-muted/30 px-3 py-2.5 hover:bg-muted/45"
                 onClick={() =>
-                  setExpanded((prev) => ({
-                    ...prev,
-                    [group.id]: prev[group.id] === false,
-                  }))
+                  setExpanded((prev) => {
+                    const next = {
+                      ...prev,
+                      [group.id]: prev[group.id] === false,
+                    };
+                    persistExpanded(next);
+                    return next;
+                  })
                 }
               >
                 <div className="flex flex-wrap items-center gap-2">
