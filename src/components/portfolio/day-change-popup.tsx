@@ -1,11 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react";
 import { ACCOUNT_COLOR, DayChange, pnlClass } from "@/components/portfolio/app-shell";
 import { Button } from "@/components/ui/button";
-import type { DayChangeSummary } from "@/lib/data/day-change";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  applyDayChangeView,
+  type DayChangeMarketFilter,
+  type DayChangeSort,
+  type DayChangeSortDir,
+  type DayChangeSummary,
+} from "@/lib/data/day-change";
 import { formatQuoteAsOf, formatWon } from "@/lib/money";
+import { cn } from "@/lib/utils";
+
+const MARKET_FILTERS: { id: DayChangeMarketFilter; label: string }[] = [
+  { id: "all", label: "전체" },
+  { id: "kr", label: "국내" },
+  { id: "us", label: "해외" },
+];
+
+const SORTS: { id: DayChangeSort; label: string }[] = [
+  { id: "pct", label: "수익률" },
+  { id: "value", label: "변동액" },
+];
 
 export function DayChangePopup({
   summary,
@@ -17,6 +44,24 @@ export function DayChangePopup({
   onClose: () => void;
 }) {
   const [mounted, setMounted] = useState(false);
+  const [accountId, setAccountId] = useState("all");
+  const [market, setMarket] = useState<DayChangeMarketFilter>("all");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<DayChangeSort>("pct");
+  const [dir, setDir] = useState<DayChangeSortDir>("desc");
+
+  const view = useMemo(
+    () =>
+      applyDayChangeView(summary, {
+        accountId,
+        market,
+        query,
+        sort,
+        dir,
+      }),
+    [accountId, dir, market, query, sort, summary],
+  );
+  const filtered = view.itemCount !== summary.itemCount;
 
   useEffect(() => {
     setMounted(true);
@@ -61,63 +106,143 @@ export function DayChangePopup({
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {formatQuoteAsOf(asOf)} · 전일 종가 기준
+            {" · "}
+            {filtered ? `${view.itemCount} / ${summary.itemCount}` : summary.itemCount}종목
           </p>
           <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
             국내와 해외는 전일 종가 기준 시점이 다를 수 있습니다.
           </p>
 
+          <div className="mt-3 space-y-2">
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="종목명, 티커"
+              aria-label="종목 검색"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={accountId} onValueChange={setAccountId}>
+                <SelectTrigger className="min-w-0 flex-1 sm:max-w-52">
+                  <SelectValue placeholder="계좌" />
+                </SelectTrigger>
+                <SelectContent className="z-[60]">
+                  <SelectItem value="all">전체 계좌</SelectItem>
+                  {summary.accounts.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex shrink-0 gap-1">
+                {MARKET_FILTERS.map((item) => (
+                  <Button
+                    key={item.id}
+                    type="button"
+                    size="sm"
+                    variant={market === item.id ? "default" : "outline"}
+                    className="rounded-full px-3"
+                    aria-pressed={market === item.id}
+                    onClick={() => setMarket(item.id)}
+                  >
+                    {item.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-0.5">
+              {SORTS.map((item) => {
+                const active = sort === item.id;
+                const SortIcon =
+                  active && dir === "asc" ? ArrowUpNarrowWide : ArrowDownWideNarrow;
+                return (
+                  <Button
+                    key={item.id}
+                    type="button"
+                    size="sm"
+                    variant={active ? "secondary" : "ghost"}
+                    className="h-7 gap-1 px-2 text-xs"
+                    onClick={() => {
+                      if (active) {
+                        setDir(dir === "desc" ? "asc" : "desc");
+                        return;
+                      }
+                      setSort(item.id);
+                      setDir("desc");
+                    }}
+                  >
+                    {item.label}
+                    <SortIcon
+                      className={cn("size-3.5", active ? "opacity-100" : "opacity-60")}
+                    />
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="mt-4 rounded-xl border px-3 py-3">
-            <p className="text-xs text-muted-foreground">전체</p>
+            <p className="text-xs text-muted-foreground">
+              {filtered ? "선택한 종목" : "전체"}
+            </p>
             <div className="mt-1 flex items-end justify-between gap-3">
-              <DayChange value={summary.pct} className="text-base" />
-              <p className={`text-sm font-semibold tabular-nums ${pnlClass(summary.valueDelta)}`}>
-                {formatSignedWon(summary.valueDelta)}
+              <DayChange value={view.pct} className="text-base" />
+              <p className={`text-sm font-semibold tabular-nums ${pnlClass(view.valueDelta)}`}>
+                {formatSignedWon(view.valueDelta)}
               </p>
             </div>
           </div>
 
-          <div className="mt-4 space-y-4">
-            {summary.accounts.map((account) => (
-              <section key={account.id}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span
-                      className="size-2.5 shrink-0 rounded-full"
-                      style={{ background: ACCOUNT_COLOR[account.color] }}
-                    />
-                    <p className="truncate text-sm font-medium">{account.label}</p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <DayChange value={account.pct} />
-                    <p className={`text-[11px] tabular-nums ${pnlClass(account.valueDelta)}`}>
-                      {formatSignedWon(account.valueDelta)}
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-2 divide-y border-t">
-                  {account.items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-start justify-between gap-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm">{item.name}</p>
-                        <p className="truncate text-[11px] text-muted-foreground">
-                          {item.ticker}
-                        </p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <DayChange value={item.pct} />
-                        <p className={`text-[11px] tabular-nums ${pnlClass(item.valueDelta)}`}>
-                          {formatSignedWon(item.valueDelta)}
-                        </p>
-                      </div>
+          {view.accounts.length === 0 ? (
+            <p className="px-1 py-8 text-center text-sm text-muted-foreground">
+              조건에 맞는 종목이 없습니다.
+            </p>
+          ) : (
+            <div className="mt-4 space-y-4">
+              {view.accounts.map((account) => (
+                <section key={account.id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span
+                        className="size-2.5 shrink-0 rounded-full"
+                        style={{ background: ACCOUNT_COLOR[account.color] }}
+                      />
+                      <p className="truncate text-sm font-medium">{account.label}</p>
                     </div>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
+                    <div className="shrink-0 text-right">
+                      <DayChange value={account.pct} />
+                      <p className={`text-[11px] tabular-nums ${pnlClass(account.valueDelta)}`}>
+                        {formatSignedWon(account.valueDelta)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-2 divide-y border-t">
+                    {account.items.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-start justify-between gap-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm">{item.name}</p>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {item.ticker}
+                            <span className="mx-1.5">·</span>
+                            {item.market === "kr" ? "국내" : "해외"}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <DayChange value={item.pct} />
+                          <p className={`text-[11px] tabular-nums ${pnlClass(item.valueDelta)}`}>
+                            {formatSignedWon(item.valueDelta)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
         </div>
         <div className="border-t px-4 py-3 sm:px-6">
           <Button type="button" className="w-full" onClick={onClose}>

@@ -1,12 +1,17 @@
 import { toKrwAmount } from "@/lib/money";
-import type { Account, AccountColor, Holding } from "@/lib/data/types";
+import type { Account, AccountColor, Holding, Market } from "@/lib/data/types";
 
 export const DAY_CHANGE_POPUP_SHOWN_KEY = "mystock.dayChangePopupShown";
+
+export type DayChangeSort = "pct" | "value";
+export type DayChangeSortDir = "asc" | "desc";
+export type DayChangeMarketFilter = "all" | Market;
 
 export type DayChangeHolding = {
   id: string;
   name: string;
   ticker: string;
+  market: Market;
   pct: number;
   valueDelta: number;
   prevValue: number;
@@ -26,8 +31,32 @@ export type DayChangeSummary = {
   pct: number;
   valueDelta: number;
   prevValue: number;
+  itemCount: number;
   accounts: DayChangeAccountSummary[];
 };
+
+function summarizeAccounts(accounts: DayChangeAccountSummary[]): DayChangeSummary {
+  const prevValue = accounts.reduce((sum, item) => sum + item.prevValue, 0);
+  const valueDelta = accounts.reduce((sum, item) => sum + item.valueDelta, 0);
+  return {
+    prevValue,
+    valueDelta,
+    pct: prevValue === 0 ? 0 : (valueDelta / prevValue) * 100,
+    itemCount: accounts.reduce((sum, item) => sum + item.items.length, 0),
+    accounts,
+  };
+}
+
+function sortHoldings(
+  items: DayChangeHolding[],
+  sort: DayChangeSort,
+  dir: DayChangeSortDir,
+) {
+  return [...items].sort((a, b) => {
+    const delta = sort === "pct" ? a.pct - b.pct : a.valueDelta - b.valueDelta;
+    return dir === "asc" ? delta : -delta;
+  });
+}
 
 export function buildDayChangeSummary(
   accounts: Account[],
@@ -56,6 +85,7 @@ export function buildDayChangeSummary(
       id: holding.id,
       name: holding.name,
       ticker: holding.ticker,
+      market: holding.market,
       pct: ((current - prevClose) / prevClose) * 100,
       valueDelta: currentValue - prevValue,
       prevValue,
@@ -72,7 +102,6 @@ export function buildDayChangeSummary(
       if (!items?.length) {
         return [];
       }
-      items.sort((a, b) => Math.abs(b.valueDelta) - Math.abs(a.valueDelta));
       const prevValue = items.reduce((sum, item) => sum + item.prevValue, 0);
       const valueDelta = items.reduce((sum, item) => sum + item.valueDelta, 0);
       return [
@@ -88,13 +117,60 @@ export function buildDayChangeSummary(
       ];
     });
 
-  const prevValue = accountSummaries.reduce((sum, item) => sum + item.prevValue, 0);
-  const valueDelta = accountSummaries.reduce((sum, item) => sum + item.valueDelta, 0);
+  return summarizeAccounts(accountSummaries);
+}
 
-  return {
-    prevValue,
-    valueDelta,
-    pct: prevValue === 0 ? 0 : (valueDelta / prevValue) * 100,
-    accounts: accountSummaries,
-  };
+export function applyDayChangeView(
+  summary: DayChangeSummary,
+  options: {
+    accountId: string;
+    market: DayChangeMarketFilter;
+    query: string;
+    sort: DayChangeSort;
+    dir: DayChangeSortDir;
+  },
+): DayChangeSummary {
+  const needle = options.query.trim().toLowerCase();
+  const accounts = summary.accounts.flatMap((account) => {
+    if (options.accountId !== "all" && account.id !== options.accountId) {
+      return [];
+    }
+    const items = sortHoldings(
+      account.items.filter((item) => {
+        if (options.market !== "all" && item.market !== options.market) {
+          return false;
+        }
+        if (!needle) {
+          return true;
+        }
+        return (
+          item.name.toLowerCase().includes(needle) ||
+          item.ticker.toLowerCase().includes(needle)
+        );
+      }),
+      options.sort,
+      options.dir,
+    );
+    if (!items.length) {
+      return [];
+    }
+    const prevValue = items.reduce((sum, item) => sum + item.prevValue, 0);
+    const valueDelta = items.reduce((sum, item) => sum + item.valueDelta, 0);
+    return [
+      {
+        ...account,
+        items,
+        prevValue,
+        valueDelta,
+        pct: prevValue === 0 ? 0 : (valueDelta / prevValue) * 100,
+      },
+    ];
+  });
+
+  accounts.sort((a, b) => {
+    const delta = options.sort === "pct" ? a.pct - b.pct : a.valueDelta - b.valueDelta;
+    return options.dir === "asc" ? delta : -delta;
+  });
+
+  return summarizeAccounts(accounts);
 }
