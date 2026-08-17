@@ -1,8 +1,6 @@
 import { toKrwAmount } from "@/lib/money";
 import type { Account, AccountColor, Holding, Market } from "@/lib/data/types";
 
-export const DAY_CHANGE_POPUP_SHOWN_KEY = "mystock.dayChangePopupShown";
-
 export type DayChangeSort = "pct" | "value";
 export type DayChangeSortDir = "asc" | "desc";
 

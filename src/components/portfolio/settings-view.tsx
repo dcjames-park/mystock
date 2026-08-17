@@ -122,14 +122,14 @@ export function SettingsView() {
           <CardHeader>
             <CardTitle>전일 대비 요약</CardTitle>
             <CardDescription>
-              접속할 때 전일 종가 대비 등락을 계좌·종목별로 보여 줍니다.
+              접속할 때 전일 종가 대비 등락을 종목별로 보여 줍니다.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <SettingOnOff
               on={dayChangePopup}
               label="접속 시 전일 대비 등락 확인하기"
-              hint="현재가와 전일 종가를 비교합니다. 이 탭에서는 한 번만 표시됩니다."
+              hint="현재가와 전일 종가를 비교합니다. 접속할 때마다 표시됩니다."
               onChange={(next) => {
                 setDayChangePopup(next);
                 localStore.saveDayChangePopup(next);

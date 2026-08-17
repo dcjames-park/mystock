@@ -15,8 +15,8 @@ import { formatQuoteAsOf, formatWon } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 const SORTS: { id: DayChangeSort; label: string }[] = [
+  { id: "pct", label: "증감률" },
   { id: "value", label: "변동액" },
-  { id: "pct", label: "수익률" },
 ];
 
 const LOADING_MIN_MS = 400;
@@ -136,13 +136,6 @@ export function DayChangePopup({
                 })}
               </div>
 
-              <div className="mt-4 rounded-xl border px-3 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">전체</p>
-                  <Metrics valueDelta={summary.valueDelta} pct={summary.pct} size="lg" />
-                </div>
-              </div>
-
               {items.length === 0 ? (
                 <p className="px-1 py-8 text-center text-sm text-muted-foreground">
                   전일 대비를 계산할 종목이 없습니다.
@@ -194,6 +187,7 @@ function Metrics({
 }) {
   return (
     <div className="shrink-0 text-right">
+      <DayChange value={pct} className={size === "lg" ? "text-sm" : undefined} />
       <p
         className={cn(
           "font-semibold tabular-nums",
@@ -203,7 +197,6 @@ function Metrics({
       >
         {formatSignedWon(valueDelta)}
       </p>
-      <DayChange value={pct} className={size === "lg" ? "text-sm" : undefined} />
     </div>
   );
 }

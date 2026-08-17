@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowDownWideNarrow,
@@ -44,7 +44,6 @@ import { PeriodPicker } from "@/components/portfolio/period-picker";
 import { DayChangePopup } from "@/components/portfolio/day-change-popup";
 import { useOverlay } from "@/components/portfolio/overlay-context";
 import {
-  DAY_CHANGE_POPUP_SHOWN_KEY,
   buildDayChangeSummary,
   type DayChangeSummary,
 } from "@/lib/data/day-change";
@@ -582,6 +581,7 @@ export function HomeView() {
     null,
   );
   const [dayChangeLoading, setDayChangeLoading] = useState(false);
+  const dayChangeShown = useRef(false);
 
   useEffect(() => {
     const saved = parseHoldingSort(window.localStorage.getItem(HOLDING_SORT_KEY));
@@ -704,10 +704,7 @@ export function HomeView() {
   }, [loadCharts, period, tickerKey]);
 
   useEffect(() => {
-    if (!ready || overlay.state || dayChangePopup) {
-      return;
-    }
-    if (window.sessionStorage.getItem(DAY_CHANGE_POPUP_SHOWN_KEY) === "1") {
+    if (!ready || overlay.state || dayChangePopup || dayChangeShown.current) {
       return;
     }
     if (!readDayChangePopup()) {
@@ -1174,7 +1171,7 @@ export function HomeView() {
         summary={dayChangePopup}
         asOf={quotesAsOf}
         onClose={() => {
-          window.sessionStorage.setItem(DAY_CHANGE_POPUP_SHOWN_KEY, "1");
+          dayChangeShown.current = true;
           setDayChangePopup(null);
           setDayChangeLoading(false);
         }}
