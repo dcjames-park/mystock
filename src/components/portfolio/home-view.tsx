@@ -875,6 +875,25 @@ export function HomeView() {
               <History data-icon="inline-start" />
               매수 이력
             </Button>
+            {grouped.length > 0 ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const allOpen = grouped.every((group) => expanded[group.id] !== false);
+                  const next: Record<string, boolean> = {};
+                  for (const group of grouped) {
+                    next[group.id] = !allOpen;
+                  }
+                  setExpanded(next);
+                }}
+              >
+                {grouped.every((group) => expanded[group.id] !== false)
+                  ? "종목 숨김"
+                  : "종목 펼침"}
+              </Button>
+            ) : null}
           </div>
           {accounts.length === 0 ? (
             <div className="rounded-xl border border-dashed px-4 py-8 text-center">
