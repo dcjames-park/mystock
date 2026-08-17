@@ -730,7 +730,7 @@ export function HomeView() {
       prevCloses,
       usdKrw,
     );
-    if (summary.accounts.length === 0) {
+    if (summary.items.length === 0) {
       setDayChangeLoading(false);
       return;
     }
