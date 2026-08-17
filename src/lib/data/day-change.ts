@@ -9,6 +9,7 @@ export type DayChangeHolding = {
   name: string;
   ticker: string;
   market: Market;
+  accountId: string;
   accountLabel: string;
   accountColor: AccountColor;
   pct: number;
@@ -78,6 +79,7 @@ export function buildDayChangeSummary(
       name: holding.name,
       ticker: holding.ticker,
       market: holding.market,
+      accountId: account.id,
       accountLabel: account.label,
       accountColor: account.color,
       pct: ((current - prevClose) / prevClose) * 100,

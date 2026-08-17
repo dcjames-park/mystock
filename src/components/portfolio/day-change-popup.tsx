@@ -7,6 +7,7 @@ import { ACCOUNT_COLOR, DayChange, pnlClass } from "@/components/portfolio/app-s
 import { Button } from "@/components/ui/button";
 import {
   sortDayChangeHoldings,
+  type DayChangeHolding,
   type DayChangeSort,
   type DayChangeSortDir,
   type DayChangeSummary,
@@ -15,8 +16,8 @@ import { formatQuoteAsOf, formatWon } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 const SORTS: { id: DayChangeSort; label: string }[] = [
-  { id: "pct", label: "증감률" },
-  { id: "value", label: "변동액" },
+  { id: "value", label: "변동금액" },
+  { id: "pct", label: "등락률" },
 ];
 
 const LOADING_MIN_MS = 400;
@@ -34,12 +35,64 @@ export function DayChangePopup({
   const [contentReady, setContentReady] = useState(false);
   const [sort, setSort] = useState<DayChangeSort>("pct");
   const [dir, setDir] = useState<DayChangeSortDir>("desc");
+  const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
 
-  const items = useMemo(
-    () => (summary ? sortDayChangeHoldings(summary.items, sort, dir) : []),
-    [dir, sort, summary],
-  );
+  const accounts = useMemo(() => {
+    if (!summary) {
+      return [];
+    }
+    const seen = new Map<
+      string,
+      { id: string; label: string; color: DayChangeHolding["accountColor"] }
+    >();
+    for (const item of summary.items) {
+      if (!seen.has(item.accountId)) {
+        seen.set(item.accountId, {
+          id: item.accountId,
+          label: item.accountLabel,
+          color: item.accountColor,
+        });
+      }
+    }
+    return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label, "ko"));
+  }, [summary]);
+
+  const selected = useMemo(() => {
+    if (selectedIds == null) {
+      return new Set(accounts.map((item) => item.id));
+    }
+    return new Set(selectedIds);
+  }, [accounts, selectedIds]);
+  const allSelected = accounts.length > 0 && accounts.every((item) => selected.has(item.id));
+
+  const items = useMemo(() => {
+    if (!summary) {
+      return [];
+    }
+    const rows =
+      selectedIds == null
+        ? summary.items
+        : summary.items.filter((item) => selected.has(item.accountId));
+    return sortDayChangeHoldings(rows, sort, dir);
+  }, [dir, selected, selectedIds, sort, summary]);
   const loading = !contentReady || !summary;
+  const filtered = Boolean(summary && items.length !== summary.itemCount);
+
+  function toggleAllAccounts() {
+    if (allSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(null);
+    }
+  }
+
+  function toggleAccount(id: string) {
+    const current = selectedIds ?? accounts.map((item) => item.id);
+    const next = current.includes(id)
+      ? current.filter((item) => item !== id)
+      : [...current, id];
+    setSelectedIds(next.length === accounts.length ? null : next);
+  }
 
   useEffect(() => {
     setMounted(true);
@@ -100,11 +153,67 @@ export function DayChangePopup({
                 전일 대비
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {formatQuoteAsOf(asOf)} · 전일 종가 기준 · {summary.itemCount}종목
+                {formatQuoteAsOf(asOf)} · 전일 종가 기준
+                {" · "}
+                {filtered ? `${items.length} / ${summary.itemCount}` : summary.itemCount}종목
               </p>
               <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
                 국내와 해외는 전일 종가 기준 시점이 다를 수 있습니다.
               </p>
+
+              {accounts.length > 1 ? (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 shrink-0 rounded-full px-3 text-xs"
+                    style={
+                      allSelected
+                        ? {
+                            background: "var(--muted-foreground)",
+                            borderColor: "var(--muted-foreground)",
+                            color: "var(--background)",
+                          }
+                        : undefined
+                    }
+                    onClick={toggleAllAccounts}
+                  >
+                    전체
+                  </Button>
+                  {accounts.map((item) => {
+                    const on = selected.has(item.id);
+                    const color = ACCOUNT_COLOR[item.color];
+                    return (
+                      <Button
+                        key={item.id}
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 shrink-0 rounded-full px-3 text-xs"
+                        style={
+                          on
+                            ? {
+                                background: color,
+                                borderColor: color,
+                                color: "var(--primary-foreground)",
+                              }
+                            : undefined
+                        }
+                        onClick={() => toggleAccount(item.id)}
+                      >
+                        {on ? null : (
+                          <span
+                            className="size-1.5 rounded-full"
+                            style={{ background: color }}
+                          />
+                        )}
+                        {item.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              ) : null}
 
               <div className="mt-3 flex flex-wrap items-center justify-end gap-0.5">
                 {SORTS.map((item) => {
@@ -138,7 +247,9 @@ export function DayChangePopup({
 
               {items.length === 0 ? (
                 <p className="px-1 py-8 text-center text-sm text-muted-foreground">
-                  전일 대비를 계산할 종목이 없습니다.
+                  {summary.itemCount === 0
+                    ? "전일 대비를 계산할 종목이 없습니다."
+                    : "선택한 계좌에 종목이 없습니다."}
                 </p>
               ) : (
                 <div className="mt-2 divide-y">
@@ -179,24 +290,21 @@ export function DayChangePopup({
 function Metrics({
   valueDelta,
   pct,
-  size = "sm",
 }: {
   valueDelta: number;
   pct: number;
-  size?: "sm" | "lg";
 }) {
   return (
-    <div className="shrink-0 text-right">
-      <DayChange value={pct} className={size === "lg" ? "text-sm" : undefined} />
+    <div className="flex shrink-0 items-baseline gap-3">
       <p
         className={cn(
-          "font-semibold tabular-nums",
-          size === "lg" ? "text-sm" : "text-[11px]",
+          "w-[5.75rem] text-right text-[11px] font-semibold tabular-nums",
           pnlClass(valueDelta),
         )}
       >
         {formatSignedWon(valueDelta)}
       </p>
+      <DayChange value={pct} className="w-[4.25rem] justify-end" />
     </div>
   );
 }
