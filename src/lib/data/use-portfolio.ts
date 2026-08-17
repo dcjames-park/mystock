@@ -64,6 +64,7 @@ function usePortfolioState() {
   const [charts, setCharts] = useState<Record<string, number[]>>({});
   const [histories, setHistories] = useState<Record<string, PricePoint[]>>({});
   const [chartPending, setChartPending] = useState(0);
+  const [quotesSettled, setQuotesSettled] = useState(false);
   const historiesRef = useRef(histories);
   const inflightCharts = useRef(new Set<string>());
   const lastQuoteFetch = useRef({ key: "", at: 0 });
@@ -91,7 +92,11 @@ function usePortfolioState() {
   const snapshots = local ? parsed.snapshots : remoteSnapshots;
   const quotes = { ...parsed.quoteCache, ...liveQuotes };
   const tickerKey = [...new Set(holdings.map((item) => item.ticker).filter(Boolean))].join(",");
-  const ready = local ? localReady : remoteReady;
+  const dataReady = local ? localReady : remoteReady;
+  const quotesReady =
+    holdings.length === 0 ||
+    holdings.every((item) => Number.isFinite(quotes[item.ticker]));
+  const ready = dataReady && (quotesReady || quotesSettled);
 
   useEffect(() => {
     if (!local) {
@@ -104,6 +109,14 @@ function usePortfolioState() {
       setQuotesAsOf(localStore.readQuotesAt());
     };
     sync();
+    const cachedQuotes = localStore.listQuoteCache();
+    if (Object.keys(cachedQuotes).length > 0) {
+      setLiveQuotes((prev) => ({ ...cachedQuotes, ...prev }));
+    }
+    const cachedFx = localStore.readFxCache();
+    if (cachedFx) {
+      setFx({ ...cachedFx, fallback: false });
+    }
     setLocalReady(true);
     window.addEventListener("storage", sync);
     window.addEventListener(localStore.CHANGE_EVENT, sync);
@@ -137,6 +150,22 @@ function usePortfolioState() {
       setRemoteHoldings(data.holdings);
       setRemoteSnapshots(data.snapshots);
       setEmail(data.user?.email ?? "");
+      const cachedQuotes = localStore.listQuoteCache();
+      if (Object.keys(cachedQuotes).length > 0) {
+        setLiveQuotes((prev) => ({ ...cachedQuotes, ...prev }));
+      }
+      const cachedPrev = localStore.listPrevCloses();
+      if (Object.keys(cachedPrev).length > 0) {
+        setPrevCloses((prev) => ({ ...cachedPrev, ...prev }));
+      }
+      const cachedFx = localStore.readFxCache();
+      if (cachedFx) {
+        setFx({ ...cachedFx, fallback: false });
+      }
+      const quotesAt = localStore.readQuotesAt();
+      if (quotesAt) {
+        setQuotesAsOf(quotesAt);
+      }
       setRemoteReady(true);
     });
     return () => {
@@ -213,9 +242,7 @@ function usePortfolioState() {
       }
       if (Object.keys(next).length > 0) {
         setLiveQuotes((prev) => ({ ...prev, ...next }));
-        if (local) {
-          localStore.saveQuoteCache({ ...parsed.quoteCache, ...next });
-        }
+        localStore.saveQuoteCache({ ...localStore.listQuoteCache(), ...next });
       }
       if (Object.keys(nextPrev).length > 0) {
         setPrevCloses((prev) => ({ ...prev, ...nextPrev }));
@@ -345,7 +372,11 @@ function usePortfolioState() {
   }, [applySnapshot, loadCharts, tickerKey]);
 
   useEffect(() => {
-    if (!ready) {
+    if (!dataReady) {
+      return;
+    }
+    if (!tickerKey) {
+      setQuotesSettled(true);
       return;
     }
     const cached = localStore.readFxCache();
@@ -356,6 +387,7 @@ function usePortfolioState() {
       lastQuoteFetch.current.key === tickerKey &&
       Date.now() - lastQuoteFetch.current.at < QUOTE_TTL_MS;
     if (fresh) {
+      setQuotesSettled(true);
       return;
     }
     let cancelled = false;
@@ -374,11 +406,16 @@ function usePortfolioState() {
         lastQuoteFetch.current = { key: tickerKey, at: Date.now() };
         await applySnapshot(data);
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) {
+          setQuotesSettled(true);
+        }
+      });
     return () => {
       cancelled = true;
     };
-  }, [applySnapshot, ready, tickerKey]);
+  }, [applySnapshot, dataReady, tickerKey]);
 
   const addAccount = useCallback(
     async (label: string) => {
