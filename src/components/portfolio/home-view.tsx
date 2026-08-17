@@ -245,7 +245,17 @@ function HoldingSortBar({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1 px-1 pt-2">
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        className="h-7 gap-1 px-2 text-xs"
+        onClick={onAddHolding}
+      >
+        <Plus className="size-3.5" />
+        신규 매수
+      </Button>
+      <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-0.5">
         {HOLDING_SORTS.map((item) => {
           const active = holdingSort === item.id;
           const SortIcon =
@@ -272,16 +282,6 @@ function HoldingSortBar({
           );
         })}
       </div>
-      <Button
-        type="button"
-        size="sm"
-        variant="secondary"
-        className="ml-auto h-7 gap-1 px-2 text-xs"
-        onClick={onAddHolding}
-      >
-        <Plus className="size-3.5" />
-        신규 매수
-      </Button>
     </div>
   );
 }
