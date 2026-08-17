@@ -88,8 +88,8 @@ type HoldingSort = "value" | "rate" | "change";
 type SortDir = "asc" | "desc";
 
 const HOLDING_SORTS: { id: HoldingSort; label: string }[] = [
-  { id: "value", label: "평가금액" },
   { id: "rate", label: "수익률" },
+  { id: "value", label: "평가금액" },
   { id: "change", label: "전일 대비" },
 ];
 
