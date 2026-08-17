@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Loader2 } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Check, ChevronDown, Loader2 } from "lucide-react";
 import { ACCOUNT_COLOR, DayChange, pnlClass } from "@/components/portfolio/app-shell";
 import { Button } from "@/components/ui/button";
 import {
@@ -162,57 +162,13 @@ export function DayChangePopup({
               </p>
 
               {accounts.length > 1 ? (
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-7 shrink-0 rounded-full px-3 text-xs"
-                    style={
-                      allSelected
-                        ? {
-                            background: "var(--muted-foreground)",
-                            borderColor: "var(--muted-foreground)",
-                            color: "var(--background)",
-                          }
-                        : undefined
-                    }
-                    onClick={toggleAllAccounts}
-                  >
-                    전체
-                  </Button>
-                  {accounts.map((item) => {
-                    const on = selected.has(item.id);
-                    const color = ACCOUNT_COLOR[item.color];
-                    return (
-                      <Button
-                        key={item.id}
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-7 shrink-0 rounded-full px-3 text-xs"
-                        style={
-                          on
-                            ? {
-                                background: color,
-                                borderColor: color,
-                                color: "var(--primary-foreground)",
-                              }
-                            : undefined
-                        }
-                        onClick={() => toggleAccount(item.id)}
-                      >
-                        {on ? null : (
-                          <span
-                            className="size-1.5 rounded-full"
-                            style={{ background: color }}
-                          />
-                        )}
-                        {item.label}
-                      </Button>
-                    );
-                  })}
-                </div>
+                <AccountPicker
+                  accounts={accounts}
+                  selected={selected}
+                  allSelected={allSelected}
+                  onToggleAll={toggleAllAccounts}
+                  onToggle={toggleAccount}
+                />
               ) : null}
 
               <div className="mt-3 flex flex-wrap items-center justify-end gap-0.5">
@@ -284,6 +240,152 @@ export function DayChangePopup({
       </div>
     </div>,
     document.body,
+  );
+}
+
+function AccountPicker({
+  accounts,
+  selected,
+  allSelected,
+  onToggleAll,
+  onToggle,
+}: {
+  accounts: { id: string; label: string; color: DayChangeHolding["accountColor"] }[];
+  selected: Set<string>;
+  allSelected: boolean;
+  onToggleAll: () => void;
+  onToggle: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedAccounts = accounts.filter((item) => selected.has(item.id));
+  const label =
+    selectedAccounts.length === 0
+      ? "선택 없음"
+      : allSelected
+        ? "전체"
+        : selectedAccounts.map((item) => item.label).join(" · ");
+
+  return (
+    <div className="mt-3">
+      <div className="sm:hidden">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-expanded={open}
+          className="h-9 w-full justify-between rounded-lg px-3 text-sm"
+          onClick={() => setOpen((prev) => !prev)}
+        >
+          {selectedAccounts.length === 1 ? (
+            <span
+              className="size-2 shrink-0 rounded-full"
+              style={{ background: ACCOUNT_COLOR[selectedAccounts[0].color] }}
+            />
+          ) : null}
+          <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+          <ChevronDown
+            className={cn(
+              "size-4 shrink-0 text-muted-foreground transition-transform",
+              open && "rotate-180",
+            )}
+          />
+        </Button>
+        {open ? (
+          <div className="mt-1 overflow-hidden rounded-lg border">
+            <button
+              type="button"
+              className="flex min-h-11 w-full items-center gap-3 px-3 py-2.5 text-left text-sm"
+              onClick={onToggleAll}
+            >
+              <CheckMark on={allSelected} />
+              전체
+            </button>
+            {accounts.map((item) => {
+              const on = selected.has(item.id);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="flex min-h-11 w-full items-center gap-3 border-t px-3 py-2.5 text-left text-sm"
+                  onClick={() => onToggle(item.id)}
+                >
+                  <CheckMark on={on} />
+                  <span
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{ background: ACCOUNT_COLOR[item.color] }}
+                  />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="hidden flex-wrap items-center gap-1.5 sm:flex">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-7 shrink-0 rounded-full px-3 text-xs"
+          style={
+            allSelected
+              ? {
+                  background: "var(--muted-foreground)",
+                  borderColor: "var(--muted-foreground)",
+                  color: "var(--background)",
+                }
+              : undefined
+          }
+          onClick={onToggleAll}
+        >
+          전체
+        </Button>
+        {accounts.map((item) => {
+          const on = selected.has(item.id);
+          const color = ACCOUNT_COLOR[item.color];
+          return (
+            <Button
+              key={item.id}
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 shrink-0 rounded-full px-3 text-xs"
+              style={
+                on
+                  ? {
+                      background: color,
+                      borderColor: color,
+                      color: "var(--primary-foreground)",
+                    }
+                  : undefined
+              }
+              onClick={() => onToggle(item.id)}
+            >
+              {on ? null : (
+                <span className="size-1.5 rounded-full" style={{ background: color }} />
+              )}
+              {item.label}
+            </Button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CheckMark({ on }: { on: boolean }) {
+  return (
+    <span
+      className={cn(
+        "flex size-5 shrink-0 items-center justify-center rounded-md border",
+        on
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-input bg-background",
+      )}
+    >
+      {on ? <Check className="size-3.5" /> : null}
+    </span>
   );
 }
 
