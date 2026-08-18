@@ -287,36 +287,35 @@ export function HoldingDetailView() {
                 </>
               ) : null}
             </p>
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                className="border-[#03C75A]/30 bg-[#03C75A]/12 text-[#03C75A] hover:bg-[#03C75A]/20 hover:text-[#03C75A]"
-                onClick={() =>
-                  window.open(
-                    naverUrl ?? naverFinanceUrl(holding.ticker, holding.market, holding.kind),
-                    "_blank",
-                    "noreferrer",
-                  )
-                }
-              >
-                네이버 증권
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                className="border-[#6001D2]/30 bg-[#6001D2]/12 text-[#6001D2] hover:bg-[#6001D2]/20 hover:text-[#6001D2] dark:border-[#9B6DFF]/35 dark:bg-[#9B6DFF]/15 dark:text-[#C4A6FF] dark:hover:bg-[#9B6DFF]/25 dark:hover:text-[#C4A6FF]"
-                onClick={() =>
-                  window.open(yahooFinanceUrl(holding.ticker), "_blank", "noreferrer")
-                }
-              >
-                Yahoo Finance
-              </Button>
-            </div>
           </div>
-          <DropdownMenu>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              className="border-[#03C75A]/30 bg-[#03C75A]/12 text-[#03C75A] hover:bg-[#03C75A]/20 hover:text-[#03C75A]"
+              onClick={() =>
+                window.open(
+                  naverUrl ?? naverFinanceUrl(holding.ticker, holding.market, holding.kind),
+                  "_blank",
+                  "noreferrer",
+                )
+              }
+            >
+              네이버 증권
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              className="border-[#6001D2]/30 bg-[#6001D2]/12 text-[#6001D2] hover:bg-[#6001D2]/20 hover:text-[#6001D2] dark:border-[#9B6DFF]/35 dark:bg-[#9B6DFF]/15 dark:text-[#C4A6FF] dark:hover:bg-[#9B6DFF]/25 dark:hover:text-[#C4A6FF]"
+              onClick={() =>
+                window.open(yahooFinanceUrl(holding.ticker), "_blank", "noreferrer")
+              }
+            >
+              Yahoo Finance
+            </Button>
+            <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 type="button"
@@ -346,6 +345,7 @@ export function HoldingDetailView() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </div>
 
         <div className="grid min-w-0 gap-4 lg:grid-cols-2 lg:items-start">

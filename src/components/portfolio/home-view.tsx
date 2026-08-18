@@ -811,7 +811,22 @@ export function HomeView() {
                 }
               }}
             >
-              <CardTitle>자산 현황</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <span>자산 현황</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs font-normal"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    overlay.open({ m: "dashboard" });
+                  }}
+                >
+                  대시보드
+                </Button>
+              </CardTitle>
               <CardAction className="row-span-1 flex items-center gap-2 self-center">
                 <QuoteRefreshButton className="justify-end" />
                 <ChevronDown

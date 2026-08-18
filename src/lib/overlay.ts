@@ -10,7 +10,8 @@ export type OverlayState =
   | { m: "account-new" }
   | { m: "account-edit"; id: string }
   | { m: "account-delete"; id: string }
-  | { m: "settings" };
+  | { m: "settings" }
+  | { m: "dashboard" };
 
 const MODES = new Set<OverlayState["m"]>([
   "holding",
@@ -25,6 +26,7 @@ const MODES = new Set<OverlayState["m"]>([
   "account-edit",
   "account-delete",
   "settings",
+  "dashboard",
 ]);
 
 export function overlayHref(state: OverlayState | null) {
@@ -76,11 +78,15 @@ export function parseOverlaySearch(search: string): OverlayState | null {
       return { m: "account-new" };
     case "settings":
       return { m: "settings" };
+    case "dashboard":
+      return { m: "dashboard" };
     default:
       return null;
   }
 }
 
 export function overlaySize(state: OverlayState | null): "page" | "form" {
-  return state?.m === "holding" || state?.m === "lots" ? "page" : "form";
+  return state?.m === "holding" || state?.m === "lots" || state?.m === "dashboard"
+    ? "page"
+    : "form";
 }

@@ -10,6 +10,7 @@ import { EditAccountView } from "@/components/portfolio/edit-account-view";
 import { EditHoldingView } from "@/components/portfolio/edit-holding-view";
 import { HoldingDetailView } from "@/components/portfolio/holding-detail-view";
 import { LotFormView } from "@/components/portfolio/lot-form-view";
+import { DashboardView } from "@/components/portfolio/dashboard-view";
 import { LotsView } from "@/components/portfolio/lots-view";
 import {
   OverlayPanel,
@@ -41,6 +42,7 @@ export function OverlayHost() {
         {state.m === "account-edit" ? <EditAccountView /> : null}
         {state.m === "account-delete" ? <DeleteAccountView /> : null}
         {state.m === "settings" ? <SettingsView /> : null}
+        {state.m === "dashboard" ? <DashboardView /> : null}
       </div>
     </OverlayPanel>
   );
