@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Check, ChevronDown, Loader2 } from "lucide-react";
 import { ACCOUNT_COLOR, DayChange, pnlClass } from "@/components/portfolio/app-shell";
+import { useOverlay } from "@/components/portfolio/overlay-context";
 import { Button } from "@/components/ui/button";
 import {
   sortDayChangeHoldings,
@@ -31,6 +32,7 @@ export function DayChangePopup({
   asOf: string | null;
   onClose: () => void;
 }) {
+  const overlay = useOverlay();
   const [mounted, setMounted] = useState(false);
   const [contentReady, setContentReady] = useState(false);
   const [sort, setSort] = useState<DayChangeSort>("pct");
@@ -112,6 +114,9 @@ export function DayChangePopup({
     document.body.style.overflow = "hidden";
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        if (overlay.state) {
+          return;
+        }
         onClose();
       }
     }
@@ -120,7 +125,7 @@ export function DayChangePopup({
       document.body.style.overflow = previous;
       window.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
+  }, [onClose, overlay.state]);
 
   if (!mounted) {
     return null;
@@ -212,7 +217,15 @@ export function DayChangePopup({
                   {items.map((item) => (
                     <div
                       key={item.id}
-                      className="flex items-start justify-between gap-3 py-2.5"
+                      role="link"
+                      tabIndex={0}
+                      className="-mx-1 flex cursor-pointer items-start justify-between gap-3 rounded-lg px-1 py-2.5 hover:bg-muted/40"
+                      onClick={() => overlay.open({ m: "holding", id: item.id })}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          overlay.open({ m: "holding", id: item.id });
+                        }
+                      }}
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm">{item.name}</p>

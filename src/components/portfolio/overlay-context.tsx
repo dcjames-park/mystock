@@ -167,7 +167,7 @@ export function OverlayPanel({
 
   return createPortal(
     <OverlayFrameContext.Provider value={true}>
-      <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+      <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center sm:p-4">
         <button
           type="button"
           aria-label="닫기"
